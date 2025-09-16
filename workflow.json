@@ -2,7 +2,7 @@
   "ActionList": {
     "create_input": {
       "Arguments": {
-        "folder": "integration_tests",
+        "folder": "integration-tests",
         "input1": "input1.txt",
         "input2": "input2.txt",
         "input3": "input3.txt"
@@ -16,7 +16,7 @@
     },
     "test_py_api": {
       "Arguments": {
-        "folder": "tutorial",
+        "folder": "integration-tests",
         "input1": "input1.txt",
         "input2": "input2.txt",
         "input3": "input3.txt",
