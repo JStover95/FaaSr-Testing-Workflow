@@ -25,7 +25,7 @@
       },
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
-      "Type": "R",
+      "Type": "Python",
       "FunctionName": "test_py_api"
     }
   },
