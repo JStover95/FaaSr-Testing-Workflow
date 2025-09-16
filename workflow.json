@@ -34,7 +34,7 @@
       "FaaSType": "GitHubActions",
       "UserName": "JStover95",
       "UseSecretStore": true,
-      "ActionRepoName": "FaaSr-Testing-Functions",
+      "ActionRepoName": "FaaSr-Testing-Workflow",
       "Branch": "main"
     }
   },
