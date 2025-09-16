@@ -52,8 +52,8 @@
   "FunctionInvoke": "create_input",
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
-    "create_input": "JStover95/FaaSr-Testing-Functions/functions/01_create_input.py",
-    "test_py_api": "JStover95/FaaSr-Testing-Functions/functions/02b_test_py_api.py"
+    "create_input": "JStover95/FaaSr-Testing-Functions/functions",
+    "test_py_api": "JStover95/FaaSr-Testing-Functions/functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
