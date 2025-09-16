@@ -23,6 +23,7 @@
         "output1": "output1.txt",
         "output2": "output2.txt"
       },
+      "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "R",
       "FunctionName": "test_py_api"
