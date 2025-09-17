@@ -15,6 +15,12 @@ import time
 import logging
 from collections import defaultdict
 import re
+import contextlib
+
+with contextlib.suppress(ImportError):
+    from dotenv import load_dotenv
+
+    load_dotenv()
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')

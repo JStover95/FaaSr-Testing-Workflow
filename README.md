@@ -16,13 +16,15 @@ This repo includes workflows for FaaSr integration testing:
    pip install -r requirements.txt
    ```
 
-2. Register a workflow (via GitHub Actions or from the command line).
+2. Make a copy of `.env.template` and save it as `.env`. Save your GitHub PAT as `GITHUB_TOKEN`.
+
+3. Register a workflow (via GitHub Actions or from the command line).
 
    ```bash
    python scripts/register_workflow.py --workflow-file <Workflow JSON File>
    ```
 
-3. Invoke the workflow (via GitHub Actions or from the command line).
+4. Invoke the workflow (via GitHub Actions or from the command line).
 
    ```bash
    python scripts/invoke_workflow.py --workflow-file <Workflow JSON File>
