@@ -1,13 +1,13 @@
-name: '  (FAASR REGISTER)'
+name: "  (FAASR REGISTER)"
 
 on:
   workflow_dispatch:
     inputs:
       workflow_file:
-        description: 'Workflow JSON file name'
+        description: "Workflow JSON file name"
         required: true
         type: string
-        default: 'workflow.json'
+        default: "workflows/main.json"
 
 jobs:
   deploy:
@@ -19,7 +19,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.9'
+          python-version: "3.9"
 
       - name: Install dependencies
         run: |
@@ -51,4 +51,4 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PAT }}
         run: |
           # Run function registration 
-          python scripts/register_workflow.py --workflow-file ${{ github.event.inputs.workflow_file }} 
+          python scripts/register_workflow.py --workflow-file ${{ github.event.inputs.workflow_file }}
