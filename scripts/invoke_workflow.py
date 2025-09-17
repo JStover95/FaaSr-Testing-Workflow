@@ -1,9 +1,15 @@
 #!/usr/bin/env python3
 
 import argparse
+import contextlib
 import json
 import os
 import sys
+
+with contextlib.suppress(ImportError):
+    from dotenv import load_dotenv
+
+    load_dotenv()
 
 # Add the FaaSr-Backend to the Python path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "FaaSr-Backend"))
@@ -188,7 +194,7 @@ class WorkflowMigrationAdapter:
         self.faasr_payload = self._create_faasr_payload_from_local_file()
         if (
             "InvocationID" not in self.faasr_payload
-            or self.faasr_payload["InvocationID"] == ""
+            or self.faasr_payload["InvocationID"].strip() == ""
         ):
             self.faasr_payload._generate_invocation_id()
 
