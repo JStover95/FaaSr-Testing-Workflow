@@ -1,5 +1,4 @@
 import time
-from contextlib import contextmanager
 
 import pytest
 
@@ -13,31 +12,6 @@ TIMEOUT = 1800
 CHECK_INTERVAL = 1
 
 
-class FunctionStatusHandler:
-    def __init__(self, runner: IntegrationTestWorkflowRunner):
-        self.runner = runner
-
-    def wait_for(self, function_name: str):
-        status = self.runner.get_function_statuses()[function_name]
-        while not (
-            status == FunctionStatus.COMPLETED
-            or status == FunctionStatus.FAILED
-            or status == FunctionStatus.SKIPPED
-            or status == FunctionStatus.TIMEOUT
-        ):
-            time.sleep(CHECK_INTERVAL)
-            status = self.runner.get_function_statuses()[function_name]
-
-        if status == FunctionStatus.FAILED:
-            raise Exception(f"Function {function_name} failed")
-        elif status == FunctionStatus.SKIPPED:
-            raise Exception(f"Function {function_name} skipped")
-        elif status == FunctionStatus.TIMEOUT:
-            raise Exception(f"Function {function_name} timed out")
-
-        return status
-
-
 class WorkflowHandler:
     def __init__(self):
         self.runner = IntegrationTestWorkflowRunner(
@@ -46,13 +20,12 @@ class WorkflowHandler:
             check_interval=CHECK_INTERVAL,
         )
 
-    @contextmanager
-    def function_status_handler(self):
-        try:
-            self.runner.trigger_workflow()
-            yield FunctionStatusHandler(self.runner)
-        finally:
-            self._cleanup()
+    def __enter__(self):
+        self.runner.trigger_workflow()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self._cleanup()
 
     def _cleanup(self):
         """
@@ -75,18 +48,33 @@ class WorkflowHandler:
         # Return False to not suppress any exceptions that occurred in the context
         return False
 
+    def wait_for(self, function_name: str):
+        status = self.runner.get_function_statuses()[function_name]
+        while not (
+            status == FunctionStatus.COMPLETED
+            or status == FunctionStatus.FAILED
+            or status == FunctionStatus.SKIPPED
+            or status == FunctionStatus.TIMEOUT
+        ):
+            time.sleep(CHECK_INTERVAL)
+            status = self.runner.get_function_statuses()[function_name]
+
+        if status == FunctionStatus.FAILED:
+            raise Exception(f"Function {function_name} failed")
+        elif status == FunctionStatus.SKIPPED:
+            raise Exception(f"Function {function_name} skipped")
+        elif status == FunctionStatus.TIMEOUT:
+            raise Exception(f"Function {function_name} timed out")
+
+        return status
+
 
 @pytest.fixture(scope="session", autouse=True)
-def workflow_handler():
-    return WorkflowHandler()
-
-
-@pytest.fixture(scope="session", autouse=True)
-def function_status_handler(workflow_handler: WorkflowHandler):
-    with workflow_handler.function_status_handler() as handler:
+def handler():
+    with WorkflowHandler() as handler:
         yield handler
 
 
 @pytest.fixture(scope="session", autouse=True)
-def s3_client(workflow_handler: WorkflowHandler):
-    return workflow_handler.runner.s3_client
+def s3_client(handler: WorkflowHandler):
+    return handler.runner.s3_client
