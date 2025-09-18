@@ -20,6 +20,15 @@ class WorkflowHandler:
             check_interval=CHECK_INTERVAL,
         )
 
+    @property
+    def bucket_name(self):
+        return self.runner.bucket_name
+
+    def get_s3_key(self, file_name: str):
+        return (
+            f"integration-tests/{self.runner.faasr_payload['InvocationID']}/{file_name}"
+        )
+
     def __enter__(self):
         self.runner.trigger_workflow()
         return self
