@@ -1,4 +1,4 @@
-name: tutorialRpy-sum
+name: Faasr-Testing-Workflow-create_input
 
 on:
   workflow_dispatch:
