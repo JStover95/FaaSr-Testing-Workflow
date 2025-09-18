@@ -360,7 +360,7 @@ def main():
 
     # Initialize the workflow runner
     runner = IntegrationTestWorkflowRunner(
-        workflow_file_path="workflows/main.json",
+        workflow_file_path="main.json",
         timeout=1800,  # 30 minutes
         check_interval=5,  # Check every 5 seconds
     )
