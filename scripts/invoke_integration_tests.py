@@ -106,7 +106,7 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
     def _init_s3_client(self):
         """Initialize S3 client for monitoring"""
-        print("Initializing S3 client for monitoring")
+        self.logger.info("Initializing S3 client for monitoring")
 
         try:
             # Create a mock FaaSrPayload to get S3 credentials
@@ -134,15 +134,15 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
                 )
 
             self.bucket_name = datastore_config["Bucket"]
-            print(f"Initialized S3 client for bucket: {self.bucket_name}")
+            self.logger.info(f"Initialized S3 client for bucket: {self.bucket_name}")
 
         except Exception as e:
-            print(f"Failed to initialize S3 client: {e}")
+            self.logger.error(f"Failed to initialize S3 client: {e}")
             raise InitializationError(f"Failed to initialize S3 client: {e}")
 
     def _monitor_workflow_execution(self):
         """Monitor the workflow execution"""
-        print(
+        self.logger.info(
             f"Monitoring workflow execution for functions: {', '.join(self.function_statuses.keys())}"
         )
 
@@ -163,31 +163,30 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
             # Check completion status for each function
             for function_name, status in functions_to_check:
-                print(f"Checking function {function_name} with status {status.value}")
                 all_completed = False
                 if status == FunctionStatus.PENDING and self._check_function_running(
                     function_name
                 ):
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.RUNNING
-                    print(f"Function {function_name} running")
+                    self.logger.info(f"Function {function_name} running")
                 elif (
                     status == FunctionStatus.RUNNING
                     and self._check_function_completion(function_name)
                 ):
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.COMPLETED
-                    print(f"Function {function_name} completed")
+                    self.logger.info(f"Function {function_name} completed")
                 elif status == FunctionStatus.RUNNING and self._check_function_failed(
                     function_name
                 ):
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.FAILED
-                    print(f"Function {function_name} failed")
+                    self.logger.info(f"Function {function_name} failed")
                     failed = True
 
             if all_completed:
-                print("All functions completed")
+                self.logger.info("All functions completed")
                 break
 
             # Cascade failed status to all pending functions
@@ -195,7 +194,9 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
                 with self._status_lock:
                     for function_name, status in self.function_statuses.items():
                         if status == FunctionStatus.PENDING:
-                            print(f"Skipping function {function_name} on failure")
+                            self.logger.info(
+                                f"Skipping function {function_name} on failure"
+                            )
                             self.function_statuses[function_name] = (
                                 FunctionStatus.SKIPPED
                             )
@@ -239,17 +240,14 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
             # Check for log files
             key = f"{invocation_folder}/{function_name}.txt"
-            print(f"Checking log file path: {key}")
 
             try:
                 self.s3_client.head_object(
                     Bucket=self.bucket_name,
                     Key=str(key),
                 )
-                print(f"Log file found for {function_name}")
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
-                    print(f"Log file not found for {function_name}")
                     return False
                 else:
                     raise e
@@ -258,7 +256,7 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
         except Exception as e:
             traceback.print_exc()
-            print(f"Error checking running status for {function_name}: {e}")
+            self.logger.error(f"Error checking running status for {function_name}: {e}")
             return False
 
     def _check_function_completion(self, function_name: str) -> bool:
@@ -269,18 +267,15 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
             # Check for .done file
             key = f"{invocation_folder}/function_completions/{function_name}.done"
-            print(f"Checking done file path: {key}")
 
             # List objects with this prefix
             try:
-                response = self.s3_client.head_object(
+                self.s3_client.head_object(
                     Bucket=self.bucket_name,
                     Key=str(key),
                 )
-                print(f"Response: {response}")
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
-                    print(f"Done file not found for {function_name}")
                     return False
                 else:
                     raise e
@@ -289,7 +284,7 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
         except Exception as e:
             traceback.print_exc()
-            print(f"Error checking completion for {function_name}: {e}")
+            self.logger.error(f"Error checking completion for {function_name}: {e}")
             return False
 
     def _check_function_failed(self, function_name: str) -> bool:
@@ -297,7 +292,6 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
             invocation_folder = get_invocation_folder(self.faasr_payload)
 
             log_file_path = f"{invocation_folder}/{function_name}.txt"
-            print(f"Checking log file path: {log_file_path}")
             body = None
 
             try:
@@ -306,23 +300,20 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
                     Key=str(log_file_path),
                 )
                 body = log_content["Body"].read().decode("utf-8")
-                print(f"Log content: {body}")
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
-                    print(f"Log file not found for {function_name}")
                     return False
                 else:
                     raise e
 
             if body is not None and self.failed_regex.search(body):
-                print(f"Function {function_name} failed")
                 return True
             else:
                 return False
 
         except Exception as e:
             traceback.print_exc()
-            print(f"Error checking failed status for {function_name}: {e}")
+            self.logger.error(f"Error checking failed status for {function_name}: {e}")
             return False
 
     def _set_function_status(self, function_name: str, status: FunctionStatus):
@@ -361,8 +352,8 @@ def main():
     # Initialize the workflow runner
     runner = IntegrationTestWorkflowRunner(
         workflow_file_path="main.json",
-        timeout=1800,  # 30 minutes
-        check_interval=5,  # Check every 5 seconds
+        timeout=1800,  # 30 minutes for workflow timeout
+        check_interval=1,  # Check every second
     )
 
     # Start the workflow (returns immediately)
@@ -377,7 +368,6 @@ def main():
     while not runner.is_monitoring_complete():
         # Get current statuses (thread-safe)
         current_statuses = runner.get_function_statuses()
-        print(f"📊 Current status: {current_statuses}")
 
         # Check for changes
         for function_name, status in current_statuses.items():
@@ -385,14 +375,24 @@ def main():
                 function_name not in previous_statuses
                 or previous_statuses[function_name] != status
             ):
-                print(
-                    f"🔄 {function_name}: {previous_statuses.get(function_name, 'UNKNOWN')} → {status.value}"
-                )
+                match status:
+                    case FunctionStatus.PENDING:
+                        print(f"  {function_name}: {status.value}")
+                    case FunctionStatus.RUNNING:
+                        print(f"🔄 {function_name}: {status.value}")
+                    case FunctionStatus.COMPLETED:
+                        print(f"✅ {function_name}: {status.value}")
+                    case FunctionStatus.FAILED:
+                        print(f"‼️ {function_name}: {status.value}")
+                    case FunctionStatus.SKIPPED:
+                        print(f"  {function_name}: {status.value}")
+                    case FunctionStatus.TIMEOUT:
+                        print(f"  {function_name}: {status.value}")
 
         previous_statuses = current_statuses.copy()
 
         # Wait before next check
-        time.sleep(2)
+        time.sleep(1)
 
     # Get final results
     final_statuses = runner.get_function_statuses()
