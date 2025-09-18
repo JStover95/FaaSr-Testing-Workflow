@@ -7,9 +7,7 @@
         "input2": "input2.txt",
         "input3": "input3.txt"
       },
-      "InvokeNext": [
-        "test_py_api"
-      ],
+      "InvokeNext": ["test_py_api"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "create_input"
@@ -35,7 +33,7 @@
       "UserName": "JStover95",
       "UseSecretStore": true,
       "ActionRepoName": "FaaSr-Testing-Workflow",
-      "Branch": "testing-workflow"
+      "Branch": "integration-test-adapter"
     }
   },
   "DataStores": {
