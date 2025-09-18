@@ -1,0 +1,3 @@
+git+https://github.com/dekkov/FaaSr-Backend.git
+boto3-stubs[s3]==1.40.33
+python-dotenv==1.1.1
