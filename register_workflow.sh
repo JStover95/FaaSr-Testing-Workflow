@@ -14,3 +14,4 @@ done
 
 export $(cat .env | xargs)
 python scripts/register_workflow.py --workflow-file $WORKFLOW_FILE
+git pull
