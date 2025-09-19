@@ -33,7 +33,7 @@
       "UserName": "JStover95",
       "UseSecretStore": true,
       "ActionRepoName": "FaaSr-Testing-Workflow",
-      "Branch": "integration-test-adapter"
+      "Branch": "main"
     }
   },
   "DataStores": {
