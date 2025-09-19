@@ -181,6 +181,9 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
             # Check completion status for each function
             for function_name, status in functions_to_check:
+                if self.stream_logs and status == FunctionStatus.RUNNING:
+                    self._update_function_logs(function_name)
+
                 all_completed = False
                 if status == FunctionStatus.PENDING and self._check_function_running(
                     function_name
@@ -202,9 +205,6 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
                         self.function_statuses[function_name] = FunctionStatus.FAILED
                     self.logger.info(f"Function {function_name} failed")
                     failed = True
-
-                if self.stream_logs and status == FunctionStatus.RUNNING:
-                    self._update_function_logs(function_name)
 
             if all_completed:
                 self.logger.info("All functions completed")
@@ -241,104 +241,6 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
         # Mark monitoring as complete
         with self._status_lock:
             self._monitoring_complete = True
-
-    def get_function_statuses(self) -> dict[str, FunctionStatus]:
-        """Get a thread-safe copy of function statuses"""
-        with self._status_lock:
-            return self.function_statuses.copy()
-
-    def is_monitoring_complete(self) -> bool:
-        """Check if monitoring is complete (thread-safe)"""
-        with self._status_lock:
-            return self._monitoring_complete
-
-    def wait_for_completion(self, timeout: float = None) -> bool:
-        """Wait for monitoring to complete (thread-safe)"""
-        if self._monitoring_thread:
-            self._monitoring_thread.join(timeout=timeout)
-            return not self._monitoring_thread.is_alive()
-        return True
-
-    def shutdown(self, timeout: float = None) -> bool:
-        """
-        Gracefully shutdown the monitoring thread.
-
-        Args:
-            timeout: Maximum time to wait for graceful shutdown (default: self._cleanup_timeout)
-
-        Returns:
-            bool: True if shutdown was successful, False if timeout occurred
-        """
-        if not self._monitoring_thread or not self._monitoring_thread.is_alive():
-            return True
-
-        self.logger.info("Requesting graceful shutdown of monitoring thread...")
-
-        # Signal shutdown request
-        with self._status_lock:
-            self._shutdown_requested = True
-
-        # Wait for thread to finish gracefully
-        wait_timeout = timeout if timeout is not None else self._cleanup_timeout
-        self._monitoring_thread.join(timeout=wait_timeout)
-
-        if self._monitoring_thread.is_alive():
-            self.logger.warning(
-                f"Monitoring thread did not shutdown within {wait_timeout}s"
-            )
-            return False
-        else:
-            self.logger.info("Monitoring thread shutdown successfully")
-            return True
-
-    def force_shutdown(self):
-        """
-        Force shutdown of the monitoring thread.
-        This should only be used as a last resort.
-        """
-        if self._monitoring_thread and self._monitoring_thread.is_alive():
-            self.logger.warning("Force shutting down monitoring thread...")
-            # Note: Python threads cannot be forcefully killed, but we can mark as shutdown
-            with self._status_lock:
-                self._shutdown_requested = True
-                self._monitoring_complete = True
-
-    def cleanup(self):
-        """
-        Comprehensive cleanup of all resources.
-        This method should be called when the runner is no longer needed.
-        """
-        self.logger.info("Starting cleanup process...")
-
-        # Try graceful shutdown first
-        if not self.shutdown():
-            self.logger.warning("Graceful shutdown failed, forcing shutdown...")
-            self.force_shutdown()
-
-        # Close S3 client if it exists
-        if self.s3_client:
-            try:
-                # boto3 clients don't need explicit closing, but we can clear the reference
-                self.s3_client = None
-                self.logger.info("S3 client cleaned up")
-            except Exception as e:
-                self.logger.error(f"Error cleaning up S3 client: {e}")
-
-        self.logger.info("Cleanup completed")
-
-    def _setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown on interruption"""
-
-        def signal_handler(signum, frame):
-            self.logger.info(
-                f"Received signal {signum}, initiating graceful shutdown..."
-            )
-            self.shutdown()
-            sys.exit(0)
-
-        # Register signal handlers for common interruption signals
-        signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
-        signal.signal(signal.SIGTERM, signal_handler)  # Termination request
 
     def _update_function_logs(self, function_name: str) -> list[str]:
         """Update the logs for a function"""
@@ -442,6 +344,104 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
         """Set the status of a function (thread-safe)"""
         with self._status_lock:
             self.function_statuses[function_name] = status
+
+    def get_function_statuses(self) -> dict[str, FunctionStatus]:
+        """Get a thread-safe copy of function statuses"""
+        with self._status_lock:
+            return self.function_statuses.copy()
+
+    def is_monitoring_complete(self) -> bool:
+        """Check if monitoring is complete (thread-safe)"""
+        with self._status_lock:
+            return self._monitoring_complete
+
+    def wait_for_completion(self, timeout: float = None) -> bool:
+        """Wait for monitoring to complete (thread-safe)"""
+        if self._monitoring_thread:
+            self._monitoring_thread.join(timeout=timeout)
+            return not self._monitoring_thread.is_alive()
+        return True
+
+    def shutdown(self, timeout: float = None) -> bool:
+        """
+        Gracefully shutdown the monitoring thread.
+
+        Args:
+            timeout: Maximum time to wait for graceful shutdown (default: self._cleanup_timeout)
+
+        Returns:
+            bool: True if shutdown was successful, False if timeout occurred
+        """
+        if not self._monitoring_thread or not self._monitoring_thread.is_alive():
+            return True
+
+        self.logger.info("Requesting graceful shutdown of monitoring thread...")
+
+        # Signal shutdown request
+        with self._status_lock:
+            self._shutdown_requested = True
+
+        # Wait for thread to finish gracefully
+        wait_timeout = timeout if timeout is not None else self._cleanup_timeout
+        self._monitoring_thread.join(timeout=wait_timeout)
+
+        if self._monitoring_thread.is_alive():
+            self.logger.warning(
+                f"Monitoring thread did not shutdown within {wait_timeout}s"
+            )
+            return False
+        else:
+            self.logger.info("Monitoring thread shutdown successfully")
+            return True
+
+    def force_shutdown(self):
+        """
+        Force shutdown of the monitoring thread.
+        This should only be used as a last resort.
+        """
+        if self._monitoring_thread and self._monitoring_thread.is_alive():
+            self.logger.warning("Force shutting down monitoring thread...")
+            # Note: Python threads cannot be forcefully killed, but we can mark as shutdown
+            with self._status_lock:
+                self._shutdown_requested = True
+                self._monitoring_complete = True
+
+    def cleanup(self):
+        """
+        Comprehensive cleanup of all resources.
+        This method should be called when the runner is no longer needed.
+        """
+        self.logger.info("Starting cleanup process...")
+
+        # Try graceful shutdown first
+        if not self.shutdown():
+            self.logger.warning("Graceful shutdown failed, forcing shutdown...")
+            self.force_shutdown()
+
+        # Close S3 client if it exists
+        if self.s3_client:
+            try:
+                # boto3 clients don't need explicit closing, but we can clear the reference
+                self.s3_client = None
+                self.logger.info("S3 client cleaned up")
+            except Exception as e:
+                self.logger.error(f"Error cleaning up S3 client: {e}")
+
+        self.logger.info("Cleanup completed")
+
+    def _setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown on interruption"""
+
+        def signal_handler(signum, frame):
+            self.logger.info(
+                f"Received signal {signum}, initiating graceful shutdown..."
+            )
+            self.shutdown()
+            sys.exit(0)
+
+        # Register signal handlers for common interruption signals
+        signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+        signal.signal(signal.SIGTERM, signal_handler)  # Termination request
 
     def _create_faasr_payload_from_local_file(self):
         workflow = super()._create_faasr_payload_from_local_file()
