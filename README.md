@@ -8,7 +8,9 @@ This repo includes workflows for FaaSr integration testing:
 
 ## Getting Started
 
-1. Set up the Python virtual environment. Python 3.13 is recommended.
+1. Make a copy of `.vscode/settings.template.json` and same it `.vscode/settings.json`
+
+2. Set up the Python virtual environment. Python 3.13 is recommended.
 
    ```bash
    python3.13 -m venv .venv
@@ -16,18 +18,53 @@ This repo includes workflows for FaaSr integration testing:
    pip install -r requirements.txt
    ```
 
-2. Make a copy of `.env.template` and save it as `.env`. Save your GitHub PAT as `GITHUB_TOKEN`.
+3. Make a copy of `.env.template` and save it as `.env`. Save your GitHub PAT as `GITHUB_TOKEN`.
 
-3. Make a copy of `main.json` and give it a recognizable name and change the `WorkflowName` attribute to a unique name.
+4. Make a copy of `main.json` and give it a recognizable name and change the `WorkflowName` attribute to a unique name.
 
-4. Register the workflow (via GitHub Actions or from the command line).
+5. Commit and push your changes.
+
+6. Register the workflow (via GitHub Actions or from the command line).
 
    ```bash
    ./register_workflow.sh --workflow-file <Your Workflow File>
    ```
 
-5. Invoke the workflow with the integration test helper.
+7. Invoke the workflow with the integration test helper.
 
    ```bash
    python -m scripts.invoke_integration_tests --workflow-file <Your Workflow File>
    ```
+
+## Write and Invoke Tests
+
+A `handler` fixture can be used that automatically invokes the workflow when running tests.
+
+- **`handler.wait_for`**: Wait for the function to complete. An exception is thrown when a function fails, causing the test to fail automatically.
+- **`handler.get_s3_key`**: Get full S3 key for a given file.
+
+Use the `s3_client` fixture to run tests against function outputs on S3.
+
+- **`s3_client.head_object`**: Test whether an object exists.
+- **`s3_client.get_object`**: Test against the contents of an object.
+
+For example:
+
+```py
+def test_py_api(handler: WorkflowHandler, s3_client: S3Client):
+    handler.wait_for("test_py_api")
+
+    input1 = handler.get_s3_key("input1.txt")
+    input2 = handler.get_s3_key("input2.txt")
+    input3 = handler.get_s3_key("input3.txt")
+    
+    # Test that input1 does not exist
+    with pytest.raises(Exception):
+        s3_client.head_object(Bucket=handler.bucket_name, Key=input1)
+
+    # Test that input2 exists
+    assert s3_client.head_object(Bucket=handler.bucket_name, Key=input2) is not None
+
+    # Test that input3 matches the expected content
+    assert s3_client.get_object(Bucket=handler.bucket_name, Key=input3)["Body"].read() == b"input3"
+```
