@@ -1,3 +1,4 @@
+import argparse
 import logging
 import os
 import re
@@ -447,6 +448,12 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
 def main():
     """Example of using the thread-safe IntegrationTestWorkflowRunner"""
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--workflow-file", type=str, required=True)
+    parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--check-interval", type=int, default=1)
+    parser.add_argument("--stream-logs", type=bool, default=True)
+    args = parser.parse_args()
 
     from dotenv import load_dotenv
 
@@ -454,10 +461,10 @@ def main():
 
     # Initialize the workflow runner
     runner = IntegrationTestWorkflowRunner(
-        workflow_file_path="main.json",
-        timeout=1800,  # 30 minutes for workflow timeout
-        check_interval=1,  # Check every second
-        stream_logs=True,
+        workflow_file_path=args.workflow_file,
+        timeout=args.timeout,  # 30 minutes for workflow timeout
+        check_interval=args.check_interval,  # Check every second
+        stream_logs=args.stream_logs,
     )
 
     # Start the workflow (returns immediately)

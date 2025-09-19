@@ -18,14 +18,16 @@ This repo includes workflows for FaaSr integration testing:
 
 2. Make a copy of `.env.template` and save it as `.env`. Save your GitHub PAT as `GITHUB_TOKEN`.
 
-3. Register a workflow (via GitHub Actions or from the command line).
+3. Make a copy of `main.json` and give it a recognizable name and change the `WorkflowName` attribute to a unique name.
+
+4. Register the workflow (via GitHub Actions or from the command line).
 
    ```bash
-   python scripts/register_workflow.py --workflow-file <Workflow JSON File>
+   ./register_workflow.sh --workflow-file <Your Workflow File>
    ```
 
-4. Invoke the workflow (via GitHub Actions or from the command line).
+5. Invoke the workflow with the integration test helper.
 
    ```bash
-   python scripts/invoke_workflow.py --workflow-file <Workflow JSON File>
+   python -m scripts.invoke_integration_tests --workflow-file <Your Workflow File>
    ```
