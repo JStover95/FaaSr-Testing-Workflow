@@ -16,24 +16,6 @@ def test_py_api(handler: WorkflowHandler, s3_client: S3Client):
     input2 = handler.get_s3_key("input2.txt")
     input3 = handler.get_s3_key("input3.txt")
 
-    assert (
-        s3_client.head_object(
-            Bucket=handler.bucket_name,
-            Key=input1,
-        )
-        is not None
-    )
-    assert (
-        s3_client.head_object(
-            Bucket=handler.bucket_name,
-            Key=input2,
-        )
-        is not None
-    )
-    assert (
-        s3_client.head_object(
-            Bucket=handler.bucket_name,
-            Key=input3,
-        )
-        is not None
-    )
+    assert s3_client.head_object(Bucket=handler.bucket_name, Key=input1) is not None
+    assert s3_client.head_object(Bucket=handler.bucket_name, Key=input2) is not None
+    assert s3_client.head_object(Bucket=handler.bucket_name, Key=input3) is not None
