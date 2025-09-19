@@ -18,9 +18,11 @@ This repo includes workflows for FaaSr integration testing:
    pip install -r requirements.txt
    ```
 
-3. Make a copy of `.env.template` and save it as `.env`. Save your GitHub PAT as `GITHUB_TOKEN`.
+3. Make a copy of `main.json` and give it a recognizable name and change the `WorkflowName` attribute to a unique name.
 
-4. Make a copy of `main.json` and give it a recognizable name and change the `WorkflowName` attribute to a unique name.
+4. Make a copy of `.env.template` and save it as `.env`
+   - Save your GitHub PAT as `GITHUB_TOKEN`.
+   - Save the name of your workflow file as `TEST_WORKFLOW_FILE`.
 
 5. Commit and push your changes.
 

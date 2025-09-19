@@ -14,7 +14,7 @@ from scripts.workflow_runner import (
 
 load_dotenv()
 
-WORKFLOW_FILE_PATH = "main.json"
+TEST_WORKFLOW_FILE = os.getenv("TEST_WORKFLOW_FILE")
 TIMEOUT = 1800
 CHECK_INTERVAL = 1
 
@@ -22,7 +22,7 @@ CHECK_INTERVAL = 1
 class WorkflowHandler:
     def __init__(self):
         self.runner = WorkflowRunner(
-            workflow_file_path=WORKFLOW_FILE_PATH,
+            workflow_file_path=TEST_WORKFLOW_FILE,
             timeout=TIMEOUT,
             check_interval=CHECK_INTERVAL,
             stream_logs=True,
