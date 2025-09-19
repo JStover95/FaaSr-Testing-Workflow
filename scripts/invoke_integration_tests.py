@@ -49,9 +49,15 @@ class FunctionStatus(Enum):
 
 class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
     logfile_fstr = "logs/integration_test_{timestamp}.log"
-    failed_regex = re.compile(r"non-zero exit code \(\d+?\) from user function")
+    failed_regex = re.compile(r"\[[\d\.]+?\] \[ERROR\]")
 
-    def __init__(self, workflow_file_path: str, timeout: int, check_interval: int):
+    def __init__(
+        self,
+        workflow_file_path: str,
+        timeout: int,
+        check_interval: int,
+        stream_logs: bool = False,
+    ):
         """
         Initialize the integration tester.
 
@@ -72,8 +78,13 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
             function_name: FunctionStatus.PENDING
             for function_name in self.workflow_data["ActionList"].keys()
         }
+        self.function_logs: dict[str, list[str]] = {
+            function_name: []
+            for function_name in self.workflow_data["ActionList"].keys()
+        }
         self.timeout = timeout
         self.check_interval = check_interval
+        self.stream_logs = stream_logs
 
         # Thread management
         self._status_lock = threading.Lock()
@@ -191,6 +202,9 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
                         self.function_statuses[function_name] = FunctionStatus.FAILED
                     self.logger.info(f"Function {function_name} failed")
                     failed = True
+
+                if self.stream_logs and status == FunctionStatus.RUNNING:
+                    self._update_function_logs(function_name)
 
             if all_completed:
                 self.logger.info("All functions completed")
@@ -326,6 +340,20 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
         signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
         signal.signal(signal.SIGTERM, signal_handler)  # Termination request
 
+    def _update_function_logs(self, function_name: str) -> list[str]:
+        """Update the logs for a function"""
+        invocation_folder = get_invocation_folder(self.faasr_payload)
+        key = f"{invocation_folder}/{function_name}.txt"
+        log_content = self.s3_client.get_object(
+            Bucket=self.bucket_name,
+            Key=str(key),
+        )
+        new_logs = log_content["Body"].read().decode("utf-8").split("\n")
+        num_existing_logs = len(self.function_logs[function_name])
+        for i in range(num_existing_logs, len(new_logs)):
+            print(new_logs[i])
+        self.function_logs[function_name] = new_logs
+
     def _check_function_running(self, function_name: str) -> bool:
         """Check if a function is running by looking for log files in S3"""
         try:
@@ -448,6 +476,7 @@ def main():
         workflow_file_path="main.json",
         timeout=1800,  # 30 minutes for workflow timeout
         check_interval=1,  # Check every second
+        stream_logs=True,
     )
 
     # Start the workflow (returns immediately)
