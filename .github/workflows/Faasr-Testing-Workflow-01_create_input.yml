@@ -1,13 +1,13 @@
-name: Faasr-Testing-Workflow-create_input
+name: Faasr-Testing-Workflow-01_create_input
 
 on:
   workflow_dispatch:
     inputs:
       OVERWRITTEN:
-        description: 'overwritten fields'
+        description: "overwritten fields"
         required: true
       PAYLOAD_URL:
-        description: 'url to payload'
+        description: "url to payload"
         required: true
 jobs:
   run_docker_image:
@@ -21,7 +21,7 @@ jobs:
       OVERWRITTEN: ${{ github.event.inputs.OVERWRITTEN }}
       PAYLOAD_URL: ${{ github.event.inputs.PAYLOAD_URL }}
     steps:
-    - name: run Python
-      run: |
-        cd /action
-        python3 faasr_entry.py
+      - name: run Python
+        run: |
+          cd /action
+          python3 faasr_entry.py
