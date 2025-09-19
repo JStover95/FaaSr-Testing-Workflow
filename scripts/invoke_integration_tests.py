@@ -191,13 +191,6 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.RUNNING
                     self.logger.info(f"Function {function_name} running")
-                elif (
-                    status == FunctionStatus.RUNNING
-                    and self._check_function_completion(function_name)
-                ):
-                    with self._status_lock:
-                        self.function_statuses[function_name] = FunctionStatus.COMPLETED
-                    self.logger.info(f"Function {function_name} completed")
                 elif status == FunctionStatus.RUNNING and self._check_function_failed(
                     function_name
                 ):
@@ -205,6 +198,13 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
                         self.function_statuses[function_name] = FunctionStatus.FAILED
                     self.logger.info(f"Function {function_name} failed")
                     failed = True
+                elif (
+                    status == FunctionStatus.RUNNING
+                    and self._check_function_completion(function_name)
+                ):
+                    with self._status_lock:
+                        self.function_statuses[function_name] = FunctionStatus.COMPLETED
+                    self.logger.info(f"Function {function_name} completed")
 
             if all_completed:
                 self.logger.info("All functions completed")
@@ -250,7 +250,7 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
             Bucket=self.bucket_name,
             Key=str(key),
         )
-        new_logs = log_content["Body"].read().decode("utf-8").split("\n")
+        new_logs = log_content["Body"].read().decode("utf-8").strip().split("\n")
         num_existing_logs = len(self.function_logs[function_name])
         for i in range(num_existing_logs, len(new_logs)):
             print(new_logs[i])
@@ -283,6 +283,16 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
             self.logger.error(f"Error checking running status for {function_name}: {e}")
             return False
 
+    def _check_function_failed(self, function_name: str) -> bool:
+        try:
+            logs = "\n".join(self.function_logs[function_name])
+            return self.failed_regex.search(logs) is not None
+
+        except Exception as e:
+            traceback.print_exc()
+            self.logger.error(f"Error checking failed status for {function_name}: {e}")
+            return False
+
     def _check_function_completion(self, function_name: str) -> bool:
         """Check if a function has completed by looking for .done file in S3"""
         try:
@@ -309,35 +319,6 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
         except Exception as e:
             traceback.print_exc()
             self.logger.error(f"Error checking completion for {function_name}: {e}")
-            return False
-
-    def _check_function_failed(self, function_name: str) -> bool:
-        try:
-            invocation_folder = get_invocation_folder(self.faasr_payload)
-
-            log_file_path = f"{invocation_folder}/{function_name}.txt"
-            body = None
-
-            try:
-                log_content = self.s3_client.get_object(
-                    Bucket=self.bucket_name,
-                    Key=str(log_file_path),
-                )
-                body = log_content["Body"].read().decode("utf-8")
-            except ClientError as e:
-                if e.response["Error"]["Code"] == "404":
-                    return False
-                else:
-                    raise e
-
-            if body is not None and self.failed_regex.search(body):
-                return True
-            else:
-                return False
-
-        except Exception as e:
-            traceback.print_exc()
-            self.logger.error(f"Error checking failed status for {function_name}: {e}")
             return False
 
     def _set_function_status(self, function_name: str, status: FunctionStatus):
