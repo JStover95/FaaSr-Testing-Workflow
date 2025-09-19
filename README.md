@@ -30,13 +30,13 @@ This repo includes workflows for FaaSr integration testing:
    ./register_workflow.sh --workflow-file <Your Workflow File>
    ```
 
-7. Invoke the workflow with the integration test helper.
+7. Invoke the workflow with the workflow runner.
 
    ```bash
-   python -m scripts.invoke_integration_tests --workflow-file <Your Workflow File>
+   python -m scripts.workflow_runner --workflow-file <Your Workflow File>
    ```
 
-## Write and Invoke Tests
+## Writing Tests
 
 A `handler` fixture can be used that automatically invokes the workflow when running tests.
 
@@ -68,3 +68,16 @@ def test_py_api(handler: WorkflowHandler, s3_client: S3Client):
     # Test that input3 matches the expected content
     assert s3_client.get_object(Bucket=handler.bucket_name, Key=input3)["Body"].read() == b"input3"
 ```
+
+## Invoking Tests
+
+Tests can either be invoked from the VS Code testing UI or from the command line:
+
+```bash
+pytest tests
+```
+
+**Helpful options:**
+
+- **`-s`**: Capture output, including function logs.
+- **`-v\-vv`**: Create verbose output for debugging complex assertions.

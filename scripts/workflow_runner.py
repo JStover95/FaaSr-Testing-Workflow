@@ -17,7 +17,7 @@ from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 
 from scripts.invoke_workflow import WorkflowMigrationAdapter
 
-LOGGER_NAME = "IntegrationTestWorkflowRunner"
+LOGGER_NAME = "WorkflowRunner"
 REQUIRED_ENV_VARS = [
     "MY_S3_BUCKET_ACCESSKEY",
     "MY_S3_BUCKET_SECRETKEY",
@@ -34,7 +34,7 @@ class InitializationError(Exception):
         super().__init__(self.message)
 
     def __str__(self):
-        return f"Error initializing integration tester: {self.message}"
+        return f"Error initializing workflow runner: {self.message}"
 
 
 class FunctionStatus(Enum):
@@ -48,8 +48,8 @@ class FunctionStatus(Enum):
     TIMEOUT = "timeout"
 
 
-class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
-    logfile_fstr = "logs/integration_test_{timestamp}.log"
+class WorkflowRunner(WorkflowMigrationAdapter):
+    logfile_fstr = "logs/workflow_{timestamp}.log"
     failed_regex = re.compile(r"\[[\d\.]+?\] \[ERROR\]")
 
     def __init__(
@@ -60,7 +60,7 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
         stream_logs: bool = False,
     ):
         """
-        Initialize the integration tester.
+        Initialize the workflow runner.
 
         Args:
             workflow_file_path: Path to the FaaSr workflow JSON file
@@ -447,7 +447,7 @@ class IntegrationTestWorkflowRunner(WorkflowMigrationAdapter):
 
 
 def main():
-    """Example of using the thread-safe IntegrationTestWorkflowRunner"""
+    """Example of using the thread-safe WorkflowRunner"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--workflow-file", type=str, required=True)
     parser.add_argument("--timeout", type=int, default=1800)
@@ -460,7 +460,7 @@ def main():
     load_dotenv()
 
     # Initialize the workflow runner
-    runner = IntegrationTestWorkflowRunner(
+    runner = WorkflowRunner(
         workflow_file_path=args.workflow_file,
         timeout=args.timeout,  # 30 minutes for workflow timeout
         check_interval=args.check_interval,  # Check every second

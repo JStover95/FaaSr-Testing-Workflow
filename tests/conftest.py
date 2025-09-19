@@ -1,11 +1,18 @@
+import os
+import sys
 import time
 
 import pytest
+from dotenv import load_dotenv
 
-from scripts.invoke_integration_tests import (
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scripts.workflow_runner import (
     FunctionStatus,
-    IntegrationTestWorkflowRunner,
+    WorkflowRunner,
 )
+
+load_dotenv()
 
 WORKFLOW_FILE_PATH = "main.json"
 TIMEOUT = 1800
@@ -14,10 +21,11 @@ CHECK_INTERVAL = 1
 
 class WorkflowHandler:
     def __init__(self):
-        self.runner = IntegrationTestWorkflowRunner(
+        self.runner = WorkflowRunner(
             workflow_file_path=WORKFLOW_FILE_PATH,
             timeout=TIMEOUT,
             check_interval=CHECK_INTERVAL,
+            stream_logs=True,
         )
 
     @property
