@@ -18,6 +18,7 @@ from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 from scripts.invoke_workflow import WorkflowMigrationAdapter
 
 LOGGER_NAME = "WorkflowRunner"
+FUNCTION_LOGGER_NAME = "FunctionLogger"
 REQUIRED_ENV_VARS = [
     "MY_S3_BUCKET_ACCESSKEY",
     "MY_S3_BUCKET_SECRETKEY",
@@ -74,6 +75,8 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         # Setup logging
         self.timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H:%M:%S")
+        self.logger = logging.getLogger(LOGGER_NAME)
+        self.function_logger = logging.getLogger(FUNCTION_LOGGER_NAME)
         self._setup_logging()
 
         self.function_statuses: dict[str, FunctionStatus] = {
@@ -114,11 +117,22 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
     def _setup_logging(self):
         """Setup logging configuration"""
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-        )
+        # Use the existing logger configuration
         self.logger = logging.getLogger(LOGGER_NAME)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter("[%(levelname)s] [%(filename)s] %(message)s")
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)
+
+        self.function_logger = logging.getLogger(FUNCTION_LOGGER_NAME)
+        function_handler = logging.StreamHandler()
+        function_formatter = logging.Formatter(
+            "[%(levelname)s] [FunctionLog] %(message)s"
+        )
+        function_handler.setFormatter(function_formatter)
+        self.function_logger.addHandler(function_handler)
+        self.function_logger.setLevel(logging.INFO)
 
     def _init_s3_client(self):
         """Initialize S3 client for monitoring"""
@@ -267,8 +281,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         )
         new_logs = log_content["Body"].read().decode("utf-8").strip().split("\n")
         num_existing_logs = len(self.function_logs[function_name])
+
         for i in range(num_existing_logs, len(new_logs)):
-            print(new_logs[i])
+            self.function_logger.info(new_logs[i])
+
         self.function_logs[function_name] = new_logs
 
     def _check_function_running(self, function_name: str) -> bool:
