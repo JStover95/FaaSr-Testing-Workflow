@@ -49,7 +49,6 @@ class FunctionStatus(Enum):
 
 
 class WorkflowRunner(WorkflowMigrationAdapter):
-    logfile_fstr = "logs/workflow_{timestamp}.log"
     failed_regex = re.compile(r"\[[\d\.]+?\] \[ERROR\]")
 
     def __init__(
@@ -120,7 +119,6 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             level=logging.INFO,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
             handlers=[
-                logging.FileHandler(self.logfile_fstr.format(timestamp=self.timestamp)),
                 logging.StreamHandler(sys.stdout),
             ],
         )
