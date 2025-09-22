@@ -33,7 +33,7 @@
       "UserName": "JStover95",
       "UseSecretStore": true,
       "ActionRepoName": "FaaSr-Testing-Workflow",
-      "Branch": "main"
+      "Branch": "jstover-test"
     }
   },
   "DataStores": {
@@ -56,5 +56,5 @@
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
   "InvocationID": "",
-  "WorkflowName": "jstover-test-Workflow"
+  "WorkflowName": "jstover-test-2-Workflow"
 }
