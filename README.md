@@ -8,7 +8,7 @@ This repo includes workflows for FaaSr integration testing:
 
 ## Getting Started
 
-1. Make a copy of `.vscode/settings.template.json` and same it `.vscode/settings.json`
+1. Make a copy of `.vscode/settings.template.json` and save it as `.vscode/settings.json`
 
 2. Set up the Python virtual environment. Python 3.13 is recommended.
 
@@ -18,21 +18,26 @@ This repo includes workflows for FaaSr integration testing:
    pip install -r requirements.txt
    ```
 
-3. Make a copy of `main.json` and give it a recognizable name and change the `WorkflowName` attribute to a unique name.
-
-4. Make a copy of `.env.template` and save it as `.env`
+3. Make a copy of `.env.template` and save it as `.env`
    - Save your GitHub PAT as `GITHUB_TOKEN`.
    - Save the name of your workflow file as `TEST_WORKFLOW_FILE`.
 
-5. Commit and push your changes.
+4. Checkout to a new branch with a recognizable name.
 
-6. Register the workflow (via GitHub Actions or from the command line).
+5. Make a copy of `main.json` and give it a recognizable name
+   - Change the `WorkflowName` attribute to a unique name.
+      - **Note**: The workflow name can only contain alphanumeric characters ([a-z], [A-Z], [0-9]) or underscores (_)
+   - Change the `Branch` of the `My_GitHub_Account` entry in `ComputeServers` to the branch you created in the previous step.
+
+6. Commit and push your changes.
+
+7. Register the workflow (via GitHub Actions or from the command line).
 
    ```bash
    ./register_workflow.sh --workflow-file <Your Workflow File>
    ```
 
-7. Invoke the workflow with the workflow runner.
+8. Invoke the workflow with the workflow runner.
 
    ```bash
    python -m scripts.workflow_runner --workflow-file <Your Workflow File>

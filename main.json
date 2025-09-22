@@ -56,5 +56,5 @@
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
   "InvocationID": "",
-  "WorkflowName": "Faasr-Testing-Workflow"
+  "WorkflowName": "Faasr_Testing_Workflow"
 }
