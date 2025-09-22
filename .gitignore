@@ -210,3 +210,4 @@ __marimo__/
 !.vscode/settings.template.json
 
 .DS_Store
+*.env.bak
