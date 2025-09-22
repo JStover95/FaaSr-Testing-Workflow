@@ -18,6 +18,19 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
+def get_default_branch(repo, workflow_data):
+    default_branch = None
+    for compute_server_config in workflow_data["ComputeServers"].values():
+        if compute_server_config["FaaSType"].lower() == "githubactions":
+            default_branch = compute_server_config["Branch"]
+            break
+    if default_branch is None:
+        print("Using repo.default_branch!")
+        default_branch = repo.default_branch
+
+    return default_branch
+
+
 def parse_arguments():
     parser = argparse.ArgumentParser(
         description="Deploy FaaSr functions to specified platform"
@@ -403,16 +416,7 @@ def deploy_to_github(workflow_data):
         repo = g.get_repo(repo_name)
 
         # Use the branch specified in the workflow data
-
-        default_branch = None
-        for compute_server_config in workflow_data["ComputeServers"].values():
-            if compute_server_config["FaaSType"].lower() == "githubactions":
-                default_branch = compute_server_config["Branch"]
-                break
-        if default_branch is None:
-            print("Using repo.default_branch!")
-            default_branch = repo.default_branch
-
+        default_branch = get_default_branch(repo, workflow_data)
         print(f"Using branch: {default_branch}")
 
         # Create secret payload and set up secrets/variables
@@ -470,7 +474,7 @@ jobs:
             workflow_path = f".github/workflows/{prefixed_action_name}.yml"
             try:
                 # Try to get the file first
-                contents = repo.get_contents(workflow_path)
+                contents = repo.get_contents(workflow_path, ref=default_branch)
                 existing_content = contents.decoded_content.decode("utf-8")
 
                 # Check if content has changed
