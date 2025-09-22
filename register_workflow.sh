@@ -1,3 +1,6 @@
+#!/bin/bash
+set -e
+
 WORKFLOW_FILE="main.json"
 
 while [[ $# -gt 0 ]]; do
