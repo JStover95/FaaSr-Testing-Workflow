@@ -8,7 +8,7 @@ This repo includes workflows for FaaSr integration testing:
 
 ## Getting Started
 
-1. Make a copy of `.vscode/settings.template.json` and save it as `.vscode/settings.json`
+1. If you are using VS Code, make a copy of `.vscode/settings.template.json` and save it as `.vscode/settings.json`
 
 2. Set up the Python virtual environment. Python 3.13 is recommended.
 
