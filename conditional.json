@@ -4,7 +4,7 @@
       "InvokeNext": [
         {
           "True": "run_on_true",
-          "False": "run_on_false"
+          "False": "dont_run_on_true"
         }
       ],
       "FaaSServer": "My_GitHub_Account",
@@ -14,7 +14,7 @@
     "return_false": {
       "InvokeNext": [
         {
-          "True": "run_on_true",
+          "True": "dont_run_on_false",
           "False": "run_on_false"
         }
       ],
@@ -27,10 +27,20 @@
       "Type": "Python",
       "FunctionName": "run_on_true"
     },
+    "dont_run_on_true": {
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "dont_run_on_true"
+    },
     "run_on_false": {
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "run_on_false"
+    },
+    "dont_run_on_false": {
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "dont_run_on_false"
     }
   },
   "ComputeServers": {
@@ -50,8 +60,12 @@
     }
   },
   "ActionContainers": {
-    "create_input": "ghcr.io/faasr/github-actions-python:dev",
-    "test_py_api": "ghcr.io/faasr/github-actions-python:dev"
+    "return_true": "ghcr.io/faasr/github-actions-python:dev",
+    "return_false": "ghcr.io/faasr/github-actions-python:dev",
+    "run_on_true": "ghcr.io/faasr/github-actions-python:dev",
+    "run_on_false": "ghcr.io/faasr/github-actions-python:dev",
+    "dont_run_on_true": "ghcr.io/faasr/github-actions-python:dev",
+    "dont_run_on_false": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "return_true",
   "DefaultDataStore": "My_S3_Bucket",
@@ -59,7 +73,9 @@
     "return_true": "JStover95/FaaSr-Testing-Functions/functions",
     "return_false": "JStover95/FaaSr-Testing-Functions/functions",
     "run_on_true": "JStover95/FaaSr-Testing-Functions/functions",
-    "run_on_false": "JStover95/FaaSr-Testing-Functions/functions"
+    "run_on_false": "JStover95/FaaSr-Testing-Functions/functions",
+    "dont_run_on_true": "JStover95/FaaSr-Testing-Functions/functions",
+    "dont_run_on_false": "JStover95/FaaSr-Testing-Functions/functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
