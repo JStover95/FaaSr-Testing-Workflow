@@ -114,13 +114,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
     def _setup_logging(self):
         """Setup logging configuration"""
-        os.makedirs("logs", exist_ok=True)
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            handlers=[
-                logging.StreamHandler(sys.stdout),
-            ],
         )
         self.logger = logging.getLogger(LOGGER_NAME)
 
@@ -162,7 +158,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
     def _monitor_workflow_execution(self):
         """Monitor the workflow execution.
-        
+
         This method will monitor the workflow execution and update the function statuses.
         It will also stream the logs of the functions if the stream_logs flag is set.
         """
@@ -172,7 +168,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         last_status_change_time = time.time()
 
-        while self.seconds_since_last_status_change < self.timeout and not self._shutdown_requested:
+        while (
+            self.seconds_since_last_status_change < self.timeout
+            and not self._shutdown_requested
+        ):
             all_completed = True
             failed = False
 
@@ -218,7 +217,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                         self.function_statuses[function_name] = FunctionStatus.COMPLETED
                     self.logger.info(f"Function {function_name} completed")
                 else:
-                    self.seconds_since_last_status_change = time.time() - last_status_change_time
+                    self.seconds_since_last_status_change = (
+                        time.time() - last_status_change_time
+                    )
 
             if all_completed:
                 self.logger.info("All functions completed")
