@@ -1,4 +1,3 @@
-
 {
   "ActionList": {
     "create_input": {
@@ -9,7 +8,10 @@
         "input3": "input3.txt",
         "input4": "input4.txt"
       },
-      "InvokeNext": ["test_py_api", "test_r_api"],
+      "InvokeNext": [
+        "test_py_api",
+        "test_r_api"
+      ],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "create_input"
@@ -39,7 +41,7 @@
       },
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
-      "Type": "Rscript",
+      "Type": "R",
       "FunctionName": "test_r_api"
     }
   },
@@ -54,9 +56,9 @@
   },
   "DataStores": {
     "My_S3_Bucket": {
-        "Endpoint": "https://s3.us-east-1.amazonaws.com",
-        "Bucket": "faasr-integration-tests",
-        "Region": "us-east-1"
+      "Endpoint": "https://s3.us-east-1.amazonaws.com",
+      "Bucket": "faasr-integration-tests",
+      "Region": "us-east-1"
     }
   },
   "ActionContainers": {
