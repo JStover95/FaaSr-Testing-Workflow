@@ -9,8 +9,8 @@
     "return_true": {
       "InvokeNext": [
         {
-          "True": "run_on_true",
-          "False": "dont_run_on_true"
+          "True": ["run_on_true"],
+          "False": ["dont_run_on_true"]
         }
       ],
       "FaaSServer": "My_GitHub_Account",
@@ -20,8 +20,8 @@
     "return_false": {
       "InvokeNext": [
         {
-          "True": "dont_run_on_false",
-          "False": "run_on_false"
+          "True": ["dont_run_on_false"],
+          "False": ["run_on_false"]
         }
       ],
       "FaaSServer": "My_GitHub_Account",
