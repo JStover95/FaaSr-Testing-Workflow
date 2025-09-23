@@ -72,7 +72,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         self._validate_environment()
 
         # Setup logging
-        self.timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H:%M:%S")
+        self.timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
         self._setup_logging()
 
         self.function_statuses: dict[str, FunctionStatus] = {
@@ -113,6 +113,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
     def _setup_logging(self):
         """Setup logging configuration"""
         os.makedirs("logs", exist_ok=True)
+        
         logging.basicConfig(
             level=logging.INFO,
             format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -186,6 +187,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                     self._update_function_logs(function_name)
 
                 all_completed = False
+                
                 if status == FunctionStatus.PENDING and self._check_function_running(
                     function_name
                 ):
@@ -246,7 +248,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
     def _update_function_logs(self, function_name: str) -> list[str]:
         """Update the logs for a function"""
         invocation_folder = get_invocation_folder(self.faasr_payload)
-        key = f"{invocation_folder}/{function_name}.txt"
+        key = f"{invocation_folder}/{function_name}.txt".replace("\\", "/")
         log_content = self.s3_client.get_object(
             Bucket=self.bucket_name,
             Key=str(key),
@@ -264,7 +266,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             invocation_folder = get_invocation_folder(self.faasr_payload)
 
             # Check for log files
-            key = f"{invocation_folder}/{function_name}.txt"
+            key = f"{invocation_folder}/{function_name}.txt".replace("\\", "/")
 
             try:
                 self.s3_client.head_object(
@@ -273,10 +275,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 )
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
+                    print(e)
                     return False
                 else:
                     raise e
-
             return True
 
         except Exception as e:
@@ -301,7 +303,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             invocation_folder = get_invocation_folder(self.faasr_payload)
 
             # Check for .done file
-            key = f"{invocation_folder}/function_completions/{function_name}.done"
+            key = f"{invocation_folder}/function_completions/{function_name}.done".replace("\\", "/")
 
             # List objects with this prefix
             try:
