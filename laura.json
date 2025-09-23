@@ -27,20 +27,6 @@
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_py_api"
-    },
-    "test_r_api": {
-      "Arguments": {
-        "folder": "integration-tests",
-        "input1": "input1.txt",
-        "input2": "input2.txt",
-        "input3": "input3.txt",
-        "output1": "output1.txt",
-        "output2": "output2.txt"
-      },
-      "InvokeNext": [],
-      "FaaSServer": "My_GitHub_Account",
-      "Type": "Python",
-      "FunctionName": "test_py_api"
     }
   },
   "ComputeServers": {
