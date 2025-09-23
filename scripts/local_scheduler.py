@@ -152,6 +152,12 @@ class LocalScheduler(Scheduler):
                 remove=False,  # Keep container for debugging
                 stdout=True,
                 stderr=True,
+                volumes={
+                    "/var/run/docker.sock": {
+                        "bind": "/var/run/docker.sock",
+                        "mode": "rw",
+                    }
+                },
             )
 
             # Stream logs in real-time
