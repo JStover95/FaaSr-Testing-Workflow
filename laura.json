@@ -9,7 +9,7 @@
         "input3": "input3.txt",
         "input4": "input4.txt"
       },
-      "InvokeNext": ["test_py_api"],
+      "InvokeNext": ["test_py_api", "test_r_api"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "create_input"
@@ -27,6 +27,20 @@
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_py_api"
+    },
+    "test_r_api": {
+      "Arguments": {
+        "folder": "integration-tests",
+        "input4": "input4.txt",
+        "input2": "input2.txt",
+        "input3": "input3.txt",
+        "output1": "output1.txt",
+        "output2": "output2.txt"
+      },
+      "InvokeNext": [],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "test_r_api"
     }
   },
   "ComputeServers": {
@@ -47,13 +61,15 @@
   },
   "ActionContainers": {
     "create_input": "ghcr.io/faasr/github-actions-python:dev",
-    "test_py_api": "ghcr.io/faasr/github-actions-python:dev"
+    "test_py_api": "ghcr.io/faasr/github-actions-python:dev",
+    "test_r_api": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "create_input",
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
     "create_input": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test_py_api": "JStover95/FaaSr-Testing-Functions/test-functions"
+    "test_py_api": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_r_api": "JStover95/FaaSr-Testing-Functions/test-functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
