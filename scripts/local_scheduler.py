@@ -11,6 +11,9 @@ from FaaSr_py.engine.faasr_payload import FaaSrPayload
 from FaaSr_py.engine.scheduler import Scheduler
 
 logger = logging.getLogger(__name__)
+logger.formatter = logging.Formatter("[%(levelname)s] [%(filename)s] %(message)s")
+logger.addHandler(logging.StreamHandler())
+logger.setLevel(logging.INFO)
 
 
 class LocalScheduler(Scheduler):
@@ -57,9 +60,10 @@ class LocalScheduler(Scheduler):
             logger.debug(f"Prepending workflow name. Full function: {function}")
 
         # Get container image from ActionContainers or use default
-        container_image = self.faasr.get("ActionContainers", {}).get(
-            function, "ghcr.io/faasr/github-actions-python:dev"
-        )
+        # container_image = self.faasr.get("ActionContainers", {}).get(
+        #     function, "ghcr.io/faasr/github-actions-python:dev"
+        # )
+        container_image = "faasr-github-actions-local:latest"
         logger.info(f"Using container image: {container_image}")
 
         # Prepare environment variables (same as GitHub Actions)
@@ -100,8 +104,8 @@ class LocalScheduler(Scheduler):
         env_vars = {
             "TOKEN": next_compute_server.get("Token", ""),
             "My_GitHub_Account_PAT": next_compute_server.get("Token", ""),
-            "My_S3_Bucket_AccessKey": os.getenv("My_S3_Bucket_AccessKey", ""),
-            "My_S3_Bucket_SecretKey": os.getenv("My_S3_Bucket_SecretKey", ""),
+            "My_S3_Bucket_AccessKey": os.getenv("MY_S3_BUCKET_ACCESSKEY", ""),
+            "My_S3_Bucket_SecretKey": os.getenv("MY_S3_BUCKET_SECRETKEY", ""),
             "OVERWRITTEN": json.dumps(overwritten_fields),
             "PAYLOAD_URL": self.faasr.url,
         }
@@ -133,8 +137,8 @@ class LocalScheduler(Scheduler):
 
         try:
             # Pull the container image if not already present
-            logger.info(f"Pulling container image: {container_image}")
-            self.docker_client.images.pull(container_image)
+            # logger.info(f"Pulling container image: {container_image}")
+            # self.docker_client.images.pull(container_image)
 
             # Run the container
             logger.info(f"Starting container: {container_name}")
@@ -203,167 +207,3 @@ class LocalScheduler(Scheduler):
                     logger.info(f"Cleaned up container: {container.name}")
         except Exception as e:
             logger.warning(f"Error during container cleanup: {e}")
-
-
-class LocalWorkflowAdapter:
-    """
-    Adapter class that bridges the gap between workflow files and LocalScheduler.
-
-    This class provides a simple interface to run workflows locally using Docker
-    instead of GitHub Actions.
-    """
-
-    def __init__(self, workflow_file_path):
-        """
-        Initialize the local workflow adapter.
-
-        Args:
-            workflow_file_path: str -- Path to the workflow JSON file
-        """
-        self.workflow_file_path = workflow_file_path
-        self.workflow_data = self._read_workflow_file()
-        self.faasr_payload = None
-
-    def _read_workflow_file(self):
-        """Read and parse the workflow JSON file."""
-        try:
-            with open(self.workflow_file_path, "r") as f:
-                return json.load(f)
-        except FileNotFoundError:
-            print(f"Error: Workflow file {self.workflow_file_path} not found")
-            sys.exit(1)
-        except json.JSONDecodeError:
-            print(f"Error: Invalid JSON in workflow file {self.workflow_file_path}")
-            sys.exit(1)
-
-    def _get_credentials(self):
-        """Get credentials from environment variables."""
-        return {
-            "My_GitHub_Account_TOKEN": os.getenv("GITHUB_TOKEN"),
-            "My_Minio_Bucket_ACCESS_KEY": os.getenv("MINIO_ACCESS_KEY"),
-            "My_Minio_Bucket_SECRET_KEY": os.getenv("MINIO_SECRET_KEY"),
-        }
-
-    def _create_faasr_payload_from_local_file(self):
-        """Create FaaSrPayload from local workflow file."""
-        # Get credentials
-        credentials = self._get_credentials()
-
-        # Create a copy of workflow data and add credentials
-        processed_workflow = self.workflow_data.copy()
-
-        # Add credentials to ComputeServers and DataStores
-        for server_name, server_config in processed_workflow.get(
-            "ComputeServers", {}
-        ).items():
-            if server_config.get("FaaSType") == "GitHubActions":
-                server_config["Token"] = credentials.get("My_GitHub_Account_TOKEN", "")
-
-        for store_name, store_config in processed_workflow.get(
-            "DataStores", {}
-        ).items():
-            if "Minio" in store_name or "S3" in store_name:
-                store_config["AccessKey"] = credentials.get(
-                    "My_Minio_Bucket_ACCESS_KEY", ""
-                )
-                store_config["SecretKey"] = credentials.get(
-                    "My_Minio_Bucket_SECRET_KEY", ""
-                )
-
-        return FaaSrPayload(processed_workflow)
-
-    def trigger_workflow(self):
-        """
-        Trigger the workflow using the LocalScheduler.
-        """
-        # Get the function to invoke
-        function_invoke = self.workflow_data.get("FunctionInvoke")
-        if not function_invoke:
-            print("Error: No FunctionInvoke specified in workflow file")
-            sys.exit(1)
-
-        if function_invoke not in self.workflow_data["ActionList"]:
-            print(f"Error: FunctionInvoke '{function_invoke}' not found in ActionList")
-            sys.exit(1)
-
-        # Get action and server configuration
-        action_data = self.workflow_data["ActionList"][function_invoke]
-        server_name = action_data["FaaSServer"]
-        server_config = self.workflow_data["ComputeServers"][server_name]
-        faas_type = server_config["FaaSType"].lower()
-
-        print(f"Using LocalScheduler for '{function_invoke}' on {faas_type}...")
-
-        # Create FaaSrPayload instance
-        self.faasr_payload = self._create_faasr_payload_from_local_file()
-
-        # Create LocalScheduler instance
-        try:
-            scheduler = LocalScheduler(self.faasr_payload)
-        except Exception as e:
-            print(f"Error creating LocalScheduler: {e}")
-            sys.exit(1)
-
-        # Get workflow name for prefixing (if available)
-        workflow_name = self.workflow_data.get("WorkflowName", "")
-
-        # Use the LocalScheduler to trigger the function
-        try:
-            print(f"✓ Using LocalScheduler to trigger function: {function_invoke}")
-            scheduler.trigger_func(workflow_name, function_invoke)
-            print("✓ Workflow triggered successfully using LocalScheduler!")
-        except Exception as e:
-            print(f"✗ Error triggering workflow with LocalScheduler: {e}")
-            sys.exit(1)
-
-
-def main():
-    """Main entry point for the local scheduler."""
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Run FaaSr workflows locally with Docker"
-    )
-    parser.add_argument(
-        "--workflow-file", required=True, help="Path to workflow JSON file"
-    )
-    parser.add_argument(
-        "--cleanup", action="store_true", help="Clean up Docker containers before exit"
-    )
-
-    args = parser.parse_args()
-
-    print("=" * 60)
-    print("FaaSr Local Scheduler")
-    print("Running workflows locally with Docker")
-    print("=" * 60)
-
-    # Verify workflow file exists
-    if not os.path.exists(args.workflow_file):
-        print(f"Error: Workflow file {args.workflow_file} not found")
-        sys.exit(1)
-
-    # Create local workflow adapter
-    try:
-        adapter = LocalWorkflowAdapter(args.workflow_file)
-    except Exception as e:
-        print(f"Error initializing local workflow adapter: {e}")
-        sys.exit(1)
-
-    # Trigger the workflow using local Docker execution
-    try:
-        adapter.trigger_workflow()
-        print("\n" + "=" * 60)
-        print("Local execution completed successfully!")
-        print("The workflow has been executed using Docker containers.")
-        print("=" * 60)
-    except Exception as e:
-        import traceback
-
-        traceback.print_exc()
-        print(f"\nLocal execution failed: {e}")
-        sys.exit(1)
-
-
-if __name__ == "__main__":
-    main()
