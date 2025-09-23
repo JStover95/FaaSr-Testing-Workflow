@@ -1,12 +1,14 @@
 {
   "ActionList": {
     "sync": {
+      "Arguments": {},
       "InvokeNext": ["return_true", "return_false"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "sync"
     },
     "return_true": {
+      "Arguments": {},
       "InvokeNext": [
         {
           "True": ["run_on_true"],
@@ -18,6 +20,7 @@
       "FunctionName": "return_true"
     },
     "return_false": {
+      "Arguments": {},
       "InvokeNext": [
         {
           "True": ["dont_run_on_false"],
@@ -29,24 +32,28 @@
       "FunctionName": "return_false"
     },
     "run_on_true": {
+      "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "run_on_true"
     },
     "dont_run_on_true": {
+      "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "dont_run_on_true"
     },
     "run_on_false": {
+      "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "run_on_false"
     },
     "dont_run_on_false": {
+      "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
