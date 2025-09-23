@@ -18,6 +18,7 @@ from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 from scripts.invoke_workflow import WorkflowMigrationAdapter
 
 LOGGER_NAME = "WorkflowRunner"
+FUNCTION_LOGGER_NAME = "FunctionLogger"
 REQUIRED_ENV_VARS = [
     "MY_S3_BUCKET_ACCESSKEY",
     "MY_S3_BUCKET_SECRETKEY",
@@ -49,7 +50,6 @@ class FunctionStatus(Enum):
 
 
 class WorkflowRunner(WorkflowMigrationAdapter):
-    logfile_fstr = "logs/workflow_{timestamp}.log"
     failed_regex = re.compile(r"\[[\d\.]+?\] \[ERROR\]")
 
     def __init__(
@@ -64,8 +64,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         Args:
             workflow_file_path: Path to the FaaSr workflow JSON file
-            timeout: Timeout for the test in seconds
-            check_interval: Interval for checking the status of the test in seconds
+            timeout: Function timeout in seconds. If any function status does not change
+                after this time, the workflow will timeout and exit.
+            check_interval: Interval for checking the status of the workflow in seconds
+            stream_logs: Whether to stream the logs of the workflow
         """
         super().__init__(workflow_file_path)
 
@@ -73,6 +75,8 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         # Setup logging
         self.timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
+        self.logger = logging.getLogger(LOGGER_NAME)
+        self.function_logger = logging.getLogger(FUNCTION_LOGGER_NAME)
         self._setup_logging()
 
         self.function_statuses: dict[str, FunctionStatus] = {
@@ -84,6 +88,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             for function_name in self.workflow_data["ActionList"].keys()
         }
         self.timeout = timeout
+        self.seconds_since_last_status_change = 0
         self.check_interval = check_interval
         self.stream_logs = stream_logs
 
@@ -112,17 +117,22 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
     def _setup_logging(self):
         """Setup logging configuration"""
-        os.makedirs("logs", exist_ok=True)
-        
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            handlers=[
-                logging.FileHandler(self.logfile_fstr.format(timestamp=self.timestamp)),
-                logging.StreamHandler(sys.stdout),
-            ],
-        )
+        # Use the existing logger configuration
         self.logger = logging.getLogger(LOGGER_NAME)
+        handler = logging.StreamHandler()
+        formatter = logging.Formatter("[%(levelname)s] [%(filename)s] %(message)s")
+        handler.setFormatter(formatter)
+        self.logger.addHandler(handler)
+        self.logger.setLevel(logging.INFO)
+
+        self.function_logger = logging.getLogger(FUNCTION_LOGGER_NAME)
+        function_handler = logging.StreamHandler()
+        function_formatter = logging.Formatter(
+            "[%(levelname)s] [FunctionLog] %(message)s"
+        )
+        function_handler.setFormatter(function_formatter)
+        self.function_logger.addHandler(function_handler)
+        self.function_logger.setLevel(logging.INFO)
 
     def _init_s3_client(self):
         """Initialize S3 client for monitoring"""
@@ -130,7 +140,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         try:
             # Create a mock FaaSrPayload to get S3 credentials
-            # In a real scenario, you'd get these from your test config
+            # In a real scenario, you'd get these from your workflow config
             default_datastore = self.workflow_data.get(
                 "DefaultDataStore",
                 "My_S3_Bucket",
@@ -161,14 +171,21 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             raise InitializationError(f"Failed to initialize S3 client: {e}")
 
     def _monitor_workflow_execution(self):
-        """Monitor the workflow execution"""
+        """Monitor the workflow execution.
+
+        This method will monitor the workflow execution and update the function statuses.
+        It will also stream the logs of the functions if the stream_logs flag is set.
+        """
         self.logger.info(
             f"Monitoring workflow execution for functions: {', '.join(self.function_statuses.keys())}"
         )
 
-        start_time = time.time()
+        last_status_change_time = time.time()
 
-        while time.time() - start_time < self.timeout and not self._shutdown_requested:
+        while (
+            self.seconds_since_last_status_change < self.timeout
+            and not self._shutdown_requested
+        ):
             all_completed = True
             failed = False
 
@@ -191,12 +208,16 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 if status == FunctionStatus.PENDING and self._check_function_running(
                     function_name
                 ):
+                    self.seconds_since_last_status_change = 0
+                    last_status_change_time = time.time()
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.RUNNING
                     self.logger.info(f"Function {function_name} running")
                 elif status == FunctionStatus.RUNNING and self._check_function_failed(
                     function_name
                 ):
+                    self.seconds_since_last_status_change = 0
+                    last_status_change_time = time.time()
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.FAILED
                     self.logger.info(f"Function {function_name} failed")
@@ -205,9 +226,15 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                     status == FunctionStatus.RUNNING
                     and self._check_function_completion(function_name)
                 ):
+                    self.seconds_since_last_status_change = 0
+                    last_status_change_time = time.time()
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.COMPLETED
                     self.logger.info(f"Function {function_name} completed")
+                else:
+                    self.seconds_since_last_status_change = (
+                        time.time() - last_status_change_time
+                    )
 
             if all_completed:
                 self.logger.info("All functions completed")
@@ -255,8 +282,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         )
         new_logs = log_content["Body"].read().decode("utf-8").strip().split("\n")
         num_existing_logs = len(self.function_logs[function_name])
+
         for i in range(num_existing_logs, len(new_logs)):
-            print(new_logs[i])
+            self.function_logger.info(new_logs[i])
+
         self.function_logs[function_name] = new_logs
 
     def _check_function_running(self, function_name: str) -> bool:
@@ -452,7 +481,7 @@ def main():
     """Example of using the thread-safe WorkflowRunner"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--workflow-file", type=str, required=True)
-    parser.add_argument("--timeout", type=int, default=1800)
+    parser.add_argument("--timeout", type=int, default=120)
     parser.add_argument("--check-interval", type=int, default=1)
     parser.add_argument("--stream-logs", type=bool, default=True)
     args = parser.parse_args()
@@ -464,8 +493,8 @@ def main():
     # Initialize the workflow runner
     runner = WorkflowRunner(
         workflow_file_path=args.workflow_file,
-        timeout=args.timeout,  # 30 minutes for workflow timeout
-        check_interval=args.check_interval,  # Check every second
+        timeout=args.timeout,
+        check_interval=args.check_interval,
         stream_logs=args.stream_logs,
     )
 
