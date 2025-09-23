@@ -304,7 +304,6 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 )
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
-                    print(e)
                     return False
                 else:
                     raise e
