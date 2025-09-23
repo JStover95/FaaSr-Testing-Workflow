@@ -39,7 +39,7 @@
       },
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
-      "Type": "R",
+      "Type": "Rscript",
       "FunctionName": "test_r_api"
     }
   },
