@@ -227,6 +227,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                     FunctionStatus.PENDING,
                     FunctionStatus.INVOKED,
                 }:
+                    logs_thread_running = False
                     with suppress(KeyError):
                         if self._logs_threads[function_name].is_alive():
                             self._logs_threads[function_name].join(timeout=3)
@@ -234,13 +235,15 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                             self.logger.warning(
                                 f"Logs thread is still alive for function {function_name}, skipping update"
                             )
+                            logs_thread_running = True
 
-                    self._logs_threads[function_name] = threading.Thread(
-                        target=self._update_function_logs,
-                        args=(function_name,),
-                        daemon=True,
-                    )
-                    self._logs_threads[function_name].start()
+                    if not logs_thread_running:
+                        self._logs_threads[function_name] = threading.Thread(
+                            target=self._update_function_logs,
+                            args=(function_name,),
+                            daemon=True,
+                        )
+                        self._logs_threads[function_name].start()
 
                 all_completed = False
 
