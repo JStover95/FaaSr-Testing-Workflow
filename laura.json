@@ -85,7 +85,7 @@
   "ActionContainers": {
     "create_input": "ghcr.io/faasr/github-actions-python:dev",
     "test_py_api": "ghcr.io/faasr/github-actions-python:dev",
-    "test_r_api": "ghcr.io/faasr/github-actions-tidyverse",
+    "test_r_api": "ghcr.io/faasr/github-actions-r:dev",
     "sync1": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "create_input",
