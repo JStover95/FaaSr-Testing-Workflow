@@ -62,8 +62,8 @@
       },
       "InvokeNext": [
         {
-          "True": "test_run_true",
-          "False": "test_dontrun_false"
+          "True": ["test_run_true"],
+          "False": ["test_dontrun_false"]
         }
       ],
       "FaaSServer": "My_GitHub_Account",
