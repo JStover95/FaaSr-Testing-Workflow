@@ -1,3 +1,11 @@
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from mypy_boto3_s3 import S3Client
+else:
+    S3Client = object
+
+
 import argparse
 import logging
 import os
@@ -18,6 +26,7 @@ from botocore.exceptions import ClientError
 from FaaSr_py.helpers.graph_functions import build_adjacency_graph
 from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 
+from scripts.function_logger import FunctionLogger, InvocationStatus
 from scripts.invoke_workflow import WorkflowMigrationAdapter
 
 LOGGER_NAME = "WorkflowRunner"
@@ -54,10 +63,44 @@ class FunctionStatus(Enum):
     TIMEOUT = "timeout"
 
 
-class InvocationStatus(Enum):
-    PENDING = "pending"
-    INVOKED = "invoked"
-    NOT_INVOKED = "not_invoked"
+def pending(status: FunctionStatus) -> bool:
+    return status == FunctionStatus.PENDING
+
+
+def invoked(status: FunctionStatus) -> bool:
+    return status == FunctionStatus.INVOKED
+
+
+def not_invoked(status: FunctionStatus) -> bool:
+    return status == FunctionStatus.NOT_INVOKED
+
+
+def running(status: FunctionStatus) -> bool:
+    return status == FunctionStatus.RUNNING
+
+
+def completed(status: FunctionStatus) -> bool:
+    return status == FunctionStatus.COMPLETED
+
+
+def failed(status: FunctionStatus) -> bool:
+    return status == FunctionStatus.FAILED
+
+
+def skipped(status: FunctionStatus) -> bool:
+    return status == FunctionStatus.SKIPPED
+
+
+def timed_out(status: FunctionStatus) -> bool:
+    return status == FunctionStatus.TIMEOUT
+
+
+def has_run(status: FunctionStatus) -> bool:
+    return not (pending(status) or invoked(status) or not_invoked(status))
+
+
+def has_completed(status: FunctionStatus) -> bool:
+    return completed(status) or not_invoked(status)
 
 
 class WorkflowRunner(WorkflowMigrationAdapter):
@@ -87,11 +130,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         # Setup logging
         self.timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
-        self.logger = logging.getLogger(LOGGER_NAME)
-        self.function_logger = logging.getLogger(FUNCTION_LOGGER_NAME)
-        self._setup_logging()
+        self.logger = self._setup_logger()
 
-        # Initialize function statuses and logs
+        # Initialize S3 client for monitoring
+        self.s3_client, self.bucket_name = self._init_s3_client()
+
+        # Initialize function statuses
         self.workflow_name = self.workflow_data.get("WorkflowName")
         self.workflow_invoke = self.workflow_data.get("FunctionInvoke")
         self.function_names = self.workflow_data["ActionList"].keys()
@@ -101,40 +145,28 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             else FunctionStatus.PENDING
             for function_name in self.function_names
         }
-        self.function_logs: dict[str, list[str]] = {
-            function_name: [] for function_name in self.function_names
-        }
-        self.function_logs_complete: dict[str, bool] = {
-            function_name: False for function_name in self.function_names
-        }
+
+        # Initialize function loggers
+        self.function_logs: dict[str, FunctionLogger] = {}
+        self.stream_logs = stream_logs
 
         # Monitoring parameters
         self.timeout = timeout
         self.check_interval = check_interval
-        self.stream_logs = stream_logs
 
         # Thread management
         self._status_lock = threading.Lock()
         self._monitoring_thread = None
-        self._logs_locks: dict[str, threading.Lock] = {
-            function_name: threading.Lock() for function_name in self.function_names
-        }
-        self._logs_threads: dict[str, threading.Thread] = {}
         self._monitoring_complete = False
         self._shutdown_requested = False
         self._cleanup_timeout = 30  # seconds to wait for graceful shutdown
 
-        # Initialize S3 client for monitoring
-        self.s3_client = None
-        self.bucket_name = None
-        self._init_s3_client()
-
-        # Setup signal handlers for graceful shutdown
-        self._setup_signal_handlers()
-
         # Build adjacency graph for monitoring
         self.adj_graph, self.ranks = build_adjacency_graph(self.workflow_data)
         self.reverse_adj_graph = self._build_reverse_adjacency_graph()
+
+        # Setup signal handlers for graceful shutdown
+        self._setup_signal_handlers()
 
     def _validate_environment(self):
         """Validate environment variables"""
@@ -144,26 +176,18 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 f"Missing required environment variables: {', '.join(missing_env_vars)}"
             )
 
-    def _setup_logging(self):
+    def _setup_logger(self):
         """Setup logging configuration"""
         # Use the existing logger configuration
-        self.logger = logging.getLogger(LOGGER_NAME)
+        logger = logging.getLogger(LOGGER_NAME)
         handler = logging.StreamHandler()
         formatter = logging.Formatter("[%(levelname)s] [%(filename)s] %(message)s")
         handler.setFormatter(formatter)
-        self.logger.addHandler(handler)
-        self.logger.setLevel(logging.INFO)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+        return logger
 
-        self.function_logger = logging.getLogger(FUNCTION_LOGGER_NAME)
-        function_handler = logging.StreamHandler()
-        function_formatter = logging.Formatter(
-            "[%(levelname)s] [FunctionLog] %(message)s"
-        )
-        function_handler.setFormatter(function_formatter)
-        self.function_logger.addHandler(function_handler)
-        self.function_logger.setLevel(logging.INFO)
-
-    def _init_s3_client(self):
+    def _init_s3_client(self) -> tuple[S3Client, str]:
         """Initialize S3 client for monitoring"""
         self.logger.info("Initializing S3 client for monitoring")
 
@@ -177,7 +201,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             datastore_config = self.workflow_data["DataStores"][default_datastore]
 
             if datastore_config.get("Endpoint"):
-                self.s3_client = boto3.client(
+                s3_client = boto3.client(
                     "s3",
                     aws_access_key_id=os.getenv("MY_S3_BUCKET_ACCESSKEY"),
                     aws_secret_access_key=os.getenv("MY_S3_BUCKET_SECRETKEY"),
@@ -185,15 +209,17 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                     endpoint_url=datastore_config["Endpoint"],
                 )
             else:
-                self.s3_client = boto3.client(
+                s3_client = boto3.client(
                     "s3",
                     aws_access_key_id=os.getenv("MY_S3_BUCKET_ACCESSKEY"),
                     aws_secret_access_key=os.getenv("MY_S3_BUCKET_SECRETKEY"),
                     region_name=datastore_config["Region"],
                 )
 
-            self.bucket_name = datastore_config["Bucket"]
-            self.logger.info(f"Initialized S3 client for bucket: {self.bucket_name}")
+            bucket_name = datastore_config["Bucket"]
+            self.logger.info(f"Initialized S3 client for bucket: {bucket_name}")
+
+            return s3_client, bucket_name
 
         except Exception as e:
             self.logger.error(f"Failed to initialize S3 client: {e}")
@@ -206,6 +232,22 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             for function in invoked:
                 reverse_adj_graph[function].add(invoker)
         return reverse_adj_graph
+
+    def _setup_signal_handlers(self):
+        """Setup signal handlers for graceful shutdown on interruption"""
+
+        def signal_handler(signum, frame):
+            signal.signal(signal.SIGINT, lambda signum, frame: sys.exit(signum))
+            signal.signal(signal.SIGTERM, lambda signum, frame: sys.exit(signum))
+            self.logger.info(
+                f"Received signal {signum}, initiating graceful shutdown..."
+            )
+            self.shutdown()
+            sys.exit(0)
+
+        # Register signal handlers for common interruption signals
+        signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
+        signal.signal(signal.SIGTERM, signal_handler)  # Termination request
 
     def _monitor_workflow_execution(self):
         """Monitor the workflow execution.
@@ -234,35 +276,11 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
             # Check completion status for each function
             for function_name, status in functions_to_check:
-                if self.stream_logs and status not in {
-                    FunctionStatus.PENDING,
-                    FunctionStatus.INVOKED,
-                    FunctionStatus.NOT_INVOKED,
-                }:
-                    with self._status_lock:
-                        if self.function_logs_complete[function_name]:
-                            continue
+                if has_run(status) and function_name not in self.function_logs:
+                    self._start_function_logger(function_name)
 
-                    logs_thread_running = False
-                    with suppress(KeyError):
-                        if self._logs_threads[function_name].is_alive():
-                            self._logs_threads[function_name].join(timeout=3)
-                        if self._logs_threads[function_name].is_alive():
-                            self.logger.warning(
-                                f"Logs thread is still alive for function {function_name}, skipping update"
-                            )
-                            logs_thread_running = True
-
-                    if not logs_thread_running:
-                        self._logs_threads[function_name] = threading.Thread(
-                            target=self._update_function_logs,
-                            args=(function_name,),
-                            daemon=True,
-                        )
-                        self._logs_threads[function_name].start()
-
-                if status == FunctionStatus.PENDING:
-                    invocation_status = self._was_invoked(function_name)
+                if pending(status):
+                    invocation_status = self._get_invocation_status(function_name)
                     if invocation_status == InvocationStatus.INVOKED:
                         seconds_since_last_status_change = 0
                         last_status_change_time = time.time()
@@ -272,24 +290,22 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                             )
                         self.logger.info(f"Function {function_name} invoked")
                     elif invocation_status == InvocationStatus.NOT_INVOKED:
+                        seconds_since_last_status_change = 0
+                        last_status_change_time = time.time()
                         with self._status_lock:
                             self.function_statuses[function_name] = (
                                 FunctionStatus.NOT_INVOKED
                             )
                         self.logger.info(f"Function {function_name} not invoked")
 
-                elif status == FunctionStatus.INVOKED and self._check_function_running(
-                    function_name
-                ):
+                elif invoked(status) and self._check_function_running(function_name):
                     seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.RUNNING
                     self.logger.info(f"Function {function_name} running")
 
-                elif status == FunctionStatus.RUNNING and self._check_function_failed(
-                    function_name
-                ):
+                elif running(status) and self._check_function_failed(function_name):
                     seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
                     with self._status_lock:
@@ -297,15 +313,13 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                     self.logger.info(f"Function {function_name} failed")
                     failed = True
 
-                elif (
-                    status == FunctionStatus.RUNNING
-                    and self._check_function_completion(function_name)
-                ):
+                elif running(status) and self._check_function_completion(function_name):
                     seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
                     # Update the statuses of the functions
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.COMPLETED
+                    self.function_logs[function_name].set_function_complete()
                     self.logger.info(f"Function {function_name} completed")
 
                 else:
@@ -313,10 +327,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                         time.time() - last_status_change_time
                     )
 
-            if all(
-                status in {FunctionStatus.COMPLETED, FunctionStatus.NOT_INVOKED}
-                for status in self.function_statuses.values()
-            ):
+            if all(has_completed(status) for status in self.function_statuses.values()):
                 self.logger.info("All functions completed")
                 break
 
@@ -324,7 +335,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             if failed:
                 with self._status_lock:
                     for function_name, status in self.function_statuses.items():
-                        if status == FunctionStatus.PENDING:
+                        if not has_completed(status):
                             self.logger.info(
                                 f"Skipping function {function_name} on failure"
                             )
@@ -338,52 +349,31 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         # Check for timeouts or shutdown
         with self._status_lock:
             for function_name, status in self.function_statuses.items():
-                if status in {
-                    FunctionStatus.PENDING,
-                    FunctionStatus.INVOKED,
-                    FunctionStatus.RUNNING,
-                }:
-                    if self._shutdown_requested:
-                        self.function_statuses[function_name] = FunctionStatus.SKIPPED
-                        self.logger.info(
-                            f"Function {function_name} skipped due to shutdown"
-                        )
-                    else:
-                        self.function_statuses[function_name] = FunctionStatus.TIMEOUT
-                        self.logger.warning(f"Function {function_name} timed out")
+                if not has_completed(status) and self._shutdown_requested:
+                    self.function_statuses[function_name] = FunctionStatus.SKIPPED
+                    self.logger.info(
+                        f"Function {function_name} skipped due to shutdown"
+                    )
+                elif not has_completed(status):
+                    self.function_statuses[function_name] = FunctionStatus.TIMEOUT
+                    self.logger.warning(f"Function {function_name} timed out")
 
         # Mark monitoring as complete
         with self._status_lock:
             self._monitoring_complete = True
 
-    def _update_function_logs(self, function_name: str) -> None:
-        """Update the logs for a function"""
-        invocation_folder = get_invocation_folder(self.faasr_payload)
-        key = f"{invocation_folder}/{function_name}.txt".replace("\\", "/")
-        log_content = self.s3_client.get_object(
-            Bucket=self.bucket_name,
-            Key=str(key),
+    def _start_function_logger(self, function_name: str) -> None:
+        function_logger = FunctionLogger(
+            function_name=function_name,
+            workflow_name=self.workflow_name,
+            invocation_folder=get_invocation_folder(self.faasr_payload),
+            bucket_name=self.bucket_name,
+            s3_client=self.s3_client,
+            stream_logs=self.stream_logs,
         )
-        logs = log_content["Body"].read().decode("utf-8").strip().split("\n")
-
-        with self._status_lock, self._logs_locks[function_name]:
-            num_existing_logs = len(self.function_logs[function_name])
-            new_logs = logs[num_existing_logs:]
-
-            if (
-                self.function_statuses[function_name] == FunctionStatus.COMPLETED
-                and not new_logs
-            ):
-                self.logger.info(
-                    f"No new logs for completed function {function_name}, marking as complete"
-                )
-                self.function_logs_complete[function_name] = True
-                return
-
-            for log in new_logs:
-                self.function_logger.info(log)
-
-            self.function_logs[function_name] = logs
+        function_logger.start()
+        self.function_logs[function_name] = function_logger
+        self.logger.info(f"Started function logger for {function_name}")
 
     def _check_function_running(self, function_name: str) -> bool:
         """Check if a function is running by looking for log files in S3"""
@@ -395,10 +385,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             key = f"{invocation_folder}/{function_name}.txt".replace("\\", "/")
 
             try:
-                self.s3_client.head_object(
-                    Bucket=self.bucket_name,
-                    Key=str(key),
-                )
+                self.s3_client.head_object(Bucket=self.bucket_name, Key=str(key))
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
                     return False
@@ -412,14 +399,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             return False
 
     def _check_function_failed(self, function_name: str) -> bool:
-        try:
-            logs = "\n".join(self.function_logs[function_name])
-            return self.failed_regex.search(logs) is not None
-
-        except Exception as e:
-            traceback.print_exc()
-            self.logger.error(f"Error checking failed status for {function_name}: {e}")
-            return False
+        with suppress(KeyError):
+            return self.function_logs[function_name].function_failed
+        return False
 
     def _check_function_completion(self, function_name: str) -> bool:
         """Check if a function has completed by looking for .done file in S3"""
@@ -434,10 +416,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
             # List objects with this prefix
             try:
-                self.s3_client.head_object(
-                    Bucket=self.bucket_name,
-                    Key=str(key),
-                )
+                self.s3_client.head_object(Bucket=self.bucket_name, Key=str(key))
             except ClientError as e:
                 if e.response["Error"]["Code"] == "404":
                     return False
@@ -451,25 +430,17 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             self.logger.error(f"Error checking completion for {function_name}: {e}")
             return False
 
-    def _was_invoked(self, function_name: str) -> InvocationStatus:
+    def _get_invocation_status(self, function_name: str) -> InvocationStatus:
         """Check if a function was invoked by looking for log files in S3"""
         for invoker in self.reverse_adj_graph[function_name]:
-            if self.function_statuses[invoker] != FunctionStatus.COMPLETED:
-                continue
-            with self._logs_locks[invoker]:
-                logs = "\n".join(self.function_logs[invoker])
-                invoked = set(
-                    re.sub(r"^" + self.workflow_name + "-", "", invocation)
-                    for invocation in self.invoked_regex.findall(logs)
+            with suppress(KeyError):
+                status = self.function_logs[invoker].get_invocation_status(
+                    function_name
                 )
-                if function_name in invoked:
+                if status == InvocationStatus.INVOKED:
                     return InvocationStatus.INVOKED
-        with self._status_lock:
-            if all(
-                self.function_logs_complete[invoker]
-                for invoker in self.reverse_adj_graph[function_name]
-            ):
-                return InvocationStatus.NOT_INVOKED
+                elif status == InvocationStatus.NOT_INVOKED:
+                    return InvocationStatus.NOT_INVOKED
         return InvocationStatus.PENDING
 
     def _set_function_status(self, function_name: str, status: FunctionStatus):
@@ -504,10 +475,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         Returns:
             bool: True if shutdown was successful, False if timeout occurred
         """
-        if (not self._monitoring_thread or not self._monitoring_thread.is_alive()) and (
-            not self._logs_threads
-            or not all(thread.is_alive() for thread in self._logs_threads.values())
-        ):
+        if not self._monitoring_thread or not self._monitoring_thread.is_alive():
             return True
 
         if self._monitoring_thread and self._monitoring_thread.is_alive():
@@ -521,22 +489,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             wait_timeout = timeout if timeout is not None else self._cleanup_timeout
             self._monitoring_thread.join(timeout=wait_timeout)
 
-        if self._logs_threads and any(
-            thread.is_alive() for thread in self._logs_threads.values()
-        ):
-            self.logger.info("Requesting graceful shutdown of logs thread...")
-            for thread in self._logs_threads.values():
-                thread.join(timeout=wait_timeout)
-
         if self._monitoring_thread.is_alive():
             self.logger.warning(
                 f"Monitoring thread did not shutdown within {wait_timeout}s"
             )
-            return False
-        if self._logs_threads and any(
-            thread.is_alive() for thread in self._logs_threads.values()
-        ):
-            self.logger.warning(f"Logs thread did not shutdown within {wait_timeout}s")
             return False
         else:
             self.logger.info("Monitoring thread shutdown successfully")
@@ -576,20 +532,6 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 self.logger.error(f"Error cleaning up S3 client: {e}")
 
         self.logger.info("Cleanup completed")
-
-    def _setup_signal_handlers(self):
-        """Setup signal handlers for graceful shutdown on interruption"""
-
-        def signal_handler(signum, frame):
-            self.logger.info(
-                f"Received signal {signum}, initiating graceful shutdown..."
-            )
-            self.shutdown()
-            sys.exit(0)
-
-        # Register signal handlers for common interruption signals
-        signal.signal(signal.SIGINT, signal_handler)  # Ctrl+C
-        signal.signal(signal.SIGTERM, signal_handler)  # Termination request
 
     def _create_faasr_payload_from_local_file(self):
         workflow = super()._create_faasr_payload_from_local_file()
