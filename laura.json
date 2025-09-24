@@ -25,7 +25,9 @@
         "output1": "output1-py.txt",
         "output2": "output2-py.txt"
       },
-      "InvokeNext": ["sync1"],
+      "InvokeNext": [
+        "sync1"
+      ],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_py_api"
@@ -39,7 +41,9 @@
         "output1": "output1-R.txt",
         "output2": "output2-R.txt"
       },
-      "InvokeNext": ["sync1"],
+      "InvokeNext": [
+        "sync1"
+      ],
       "FaaSServer": "My_GitHub_Account",
       "Type": "R",
       "FunctionName": "test_r_api"
@@ -81,7 +85,7 @@
   "ActionContainers": {
     "create_input": "ghcr.io/faasr/github-actions-python:dev",
     "test_py_api": "ghcr.io/faasr/github-actions-python:dev",
-    "test_r_api": "ghcr.io/faasr/github-actions-r:dev",
+    "test_r_api": "ghcr.io/faasr/github-actions-tidyverse",
     "sync1": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "create_input",
