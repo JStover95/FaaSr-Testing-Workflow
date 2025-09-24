@@ -54,6 +54,7 @@ class FunctionStatus(Enum):
 
 class WorkflowRunner(WorkflowMigrationAdapter):
     failed_regex = re.compile(r"\[[\d\.]+?\] \[ERROR\]")
+    invoked_regex = re.compile(r"(?<=Successfully invoked: )[a-zA-Z\-_]+")
 
     def __init__(
         self,
@@ -103,7 +104,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         # Thread management
         self._status_lock = threading.Lock()
+        self._logs_lock = threading.Lock()
         self._monitoring_thread = None
+        self._logs_thread = None
         self._monitoring_complete = False
         self._shutdown_requested = False
         self._cleanup_timeout = 30  # seconds to wait for graceful shutdown
@@ -217,8 +220,23 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
             # Check completion status for each function
             for function_name, status in functions_to_check:
-                if self.stream_logs and status == FunctionStatus.RUNNING:
-                    self._update_function_logs(function_name)
+                if self.stream_logs and status not in {
+                    FunctionStatus.PENDING,
+                    FunctionStatus.INVOKED,
+                }:
+                    if self._logs_thread and self._logs_thread.is_alive():
+                        self._logs_thread.join(timeout=3)
+                    if self._logs_thread and self._logs_thread.is_alive():
+                        self.logger.warning(
+                            f"Logs thread is still alive for function {function_name}, skipping update"
+                        )
+                    else:
+                        self._logs_thread = threading.Thread(
+                            target=self._update_function_logs,
+                            args=(function_name,),
+                            daemon=True,
+                        )
+                        self._logs_thread.start()
 
                 all_completed = False
 
@@ -248,8 +266,33 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 ):
                     seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
+
+                    # Get the functions that were invoked by the completed function
+                    invocations = self._get_invocations(function_name)
+                    should_be_invoked = set(self.adj_graph[function_name])
+                    not_invoked = should_be_invoked - invocations
+                    print("Completion ==============================================")
+                    print(f"Function {function_name} completed")
+                    print(f"Invocations: {invocations}")
+                    print(f"Should be invoked: {should_be_invoked}")
+                    print(f"Not invoked: {not_invoked}")
+
+                    # Update the statuses of the functions
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.COMPLETED
+                        for function in not_invoked:
+                            self.function_statuses[function] = (
+                                FunctionStatus.NOT_INVOKED
+                            )
+                            self.logger.info(
+                                f"Function {function} not invoked by {function_name}"
+                            )
+                        for function in invocations:
+                            self.function_statuses[function] = FunctionStatus.INVOKED
+                            self.logger.info(
+                                f"Function {function} invoked by {function_name}"
+                            )
+
                     self.logger.info(f"Function {function_name} completed")
 
                 else:
@@ -302,12 +345,14 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             Key=str(key),
         )
         new_logs = log_content["Body"].read().decode("utf-8").strip().split("\n")
-        num_existing_logs = len(self.function_logs[function_name])
 
-        for i in range(num_existing_logs, len(new_logs)):
-            self.function_logger.info(new_logs[i])
+        with self._logs_lock:
+            num_existing_logs = len(self.function_logs[function_name])
 
-        self.function_logs[function_name] = new_logs
+            for i in range(num_existing_logs, len(new_logs)):
+                self.function_logger.info(new_logs[i])
+
+            self.function_logs[function_name] = new_logs
 
     def _check_function_running(self, function_name: str) -> bool:
         """Check if a function is running by looking for log files in S3"""
@@ -375,6 +420,21 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             self.logger.error(f"Error checking completion for {function_name}: {e}")
             return False
 
+    def _get_invocations(self, function_name: str) -> set[str]:
+        """Get the functions that were invoked by a completed function"""
+        try:
+            logs = "\n".join(self.function_logs[function_name])
+            invocations = self.invoked_regex.findall(logs)
+            # Remove workflow name from invocations
+            return set(
+                re.sub(r"^" + self.workflow_name + "-", "", invocation)
+                for invocation in invocations
+            )
+        except Exception as e:
+            traceback.print_exc()
+            self.logger.error(f"Error getting invocations for {function_name}: {e}")
+            return set()
+
     def _set_function_status(self, function_name: str, status: FunctionStatus):
         """Set the status of a function (thread-safe)"""
         with self._status_lock:
@@ -407,23 +467,33 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         Returns:
             bool: True if shutdown was successful, False if timeout occurred
         """
-        if not self._monitoring_thread or not self._monitoring_thread.is_alive():
+        if (not self._monitoring_thread or not self._monitoring_thread.is_alive()) and (
+            not self._logs_thread or not self._logs_thread.is_alive()
+        ):
             return True
 
-        self.logger.info("Requesting graceful shutdown of monitoring thread...")
+        if self._logs_thread and self._logs_thread.is_alive():
+            self.logger.info("Requesting graceful shutdown of monitoring thread...")
 
-        # Signal shutdown request
-        with self._status_lock:
-            self._shutdown_requested = True
+            # Signal shutdown request
+            with self._status_lock:
+                self._shutdown_requested = True
 
-        # Wait for thread to finish gracefully
-        wait_timeout = timeout if timeout is not None else self._cleanup_timeout
-        self._monitoring_thread.join(timeout=wait_timeout)
+            # Wait for thread to finish gracefully
+            wait_timeout = timeout if timeout is not None else self._cleanup_timeout
+            self._monitoring_thread.join(timeout=wait_timeout)
+
+        if self._logs_thread and self._logs_thread.is_alive():
+            self.logger.info("Requesting graceful shutdown of logs thread...")
+            self._logs_thread.join(timeout=wait_timeout)
 
         if self._monitoring_thread.is_alive():
             self.logger.warning(
                 f"Monitoring thread did not shutdown within {wait_timeout}s"
             )
+            return False
+        if self._logs_thread.is_alive():
+            self.logger.warning(f"Logs thread did not shutdown within {wait_timeout}s")
             return False
         else:
             self.logger.info("Monitoring thread shutdown successfully")
@@ -435,7 +505,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         This should only be used as a last resort.
         """
         if self._monitoring_thread and self._monitoring_thread.is_alive():
-            self.logger.warning("Force shutting down monitoring thread...")
+            self.logger.warning("Force shutting down monitoring and logs threads...")
             # Note: Python threads cannot be forcefully killed, but we can mark as shutdown
             with self._status_lock:
                 self._shutdown_requested = True
@@ -490,6 +560,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
     def trigger_workflow(self):
         super().trigger_workflow()
 
+        self.logger.info(
+            f"Workflow {self.workflow_name} triggered with InvocationID: {self.faasr_payload['InvocationID']}"
+        )
+
         # Start monitoring in background thread
         self._monitoring_thread = threading.Thread(
             target=self._monitor_workflow_execution, daemon=True
@@ -542,6 +616,10 @@ def main():
                 match status:
                     case FunctionStatus.PENDING:
                         print(f"  {function_name}: {status.value}")
+                    case FunctionStatus.INVOKED:
+                        print(f"🔄 {function_name}: {status.value}")
+                    case FunctionStatus.NOT_INVOKED:
+                        print(f"✅ {function_name}: {status.value}")
                     case FunctionStatus.RUNNING:
                         print(f"🔄 {function_name}: {status.value}")
                     case FunctionStatus.COMPLETED:
