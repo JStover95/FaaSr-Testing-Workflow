@@ -54,6 +54,12 @@ class FunctionStatus(Enum):
     TIMEOUT = "timeout"
 
 
+class InvocationStatus(Enum):
+    PENDING = "pending"
+    INVOKED = "invoked"
+    NOT_INVOKED = "not_invoked"
+
+
 class WorkflowRunner(WorkflowMigrationAdapter):
     failed_regex = re.compile(r"\[[\d\.]+?\] \[ERROR\]")
     invoked_regex = re.compile(r"(?<=Successfully invoked: )[a-zA-Z\-_]+")
@@ -97,6 +103,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         }
         self.function_logs: dict[str, list[str]] = {
             function_name: [] for function_name in self.function_names
+        }
+        self.function_logs_complete: dict[str, bool] = {
+            function_name: False for function_name in self.function_names
         }
 
         # Monitoring parameters
@@ -228,7 +237,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 if self.stream_logs and status not in {
                     FunctionStatus.PENDING,
                     FunctionStatus.INVOKED,
+                    FunctionStatus.NOT_INVOKED,
                 }:
+                    with self._status_lock:
+                        if self.function_logs_complete[function_name]:
+                            continue
+
                     logs_thread_running = False
                     with suppress(KeyError):
                         if self._logs_threads[function_name].is_alive():
@@ -248,7 +262,8 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                         self._logs_threads[function_name].start()
 
                 if status == FunctionStatus.PENDING:
-                    if self._was_invoked(function_name):
+                    invocation_status = self._was_invoked(function_name)
+                    if invocation_status == InvocationStatus.INVOKED:
                         seconds_since_last_status_change = 0
                         last_status_change_time = time.time()
                         with self._status_lock:
@@ -256,6 +271,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                                 FunctionStatus.INVOKED
                             )
                         self.logger.info(f"Function {function_name} invoked")
+                    elif invocation_status == InvocationStatus.NOT_INVOKED:
+                        with self._status_lock:
+                            self.function_statuses[function_name] = (
+                                FunctionStatus.NOT_INVOKED
+                            )
+                        self.logger.info(f"Function {function_name} not invoked")
 
                 elif status == FunctionStatus.INVOKED and self._check_function_running(
                     function_name
@@ -293,7 +314,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                     )
 
             if all(
-                status == FunctionStatus.COMPLETED
+                status in {FunctionStatus.COMPLETED, FunctionStatus.NOT_INVOKED}
                 for status in self.function_statuses.values()
             ):
                 self.logger.info("All functions completed")
@@ -331,7 +352,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         with self._status_lock:
             self._monitoring_complete = True
 
-    def _update_function_logs(self, function_name: str) -> list[str]:
+    def _update_function_logs(self, function_name: str) -> None:
         """Update the logs for a function"""
         invocation_folder = get_invocation_folder(self.faasr_payload)
         key = f"{invocation_folder}/{function_name}.txt".replace("\\", "/")
@@ -339,15 +360,26 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             Bucket=self.bucket_name,
             Key=str(key),
         )
-        new_logs = log_content["Body"].read().decode("utf-8").strip().split("\n")
+        logs = log_content["Body"].read().decode("utf-8").strip().split("\n")
 
-        with self._logs_locks[function_name]:
+        with self._status_lock, self._logs_locks[function_name]:
             num_existing_logs = len(self.function_logs[function_name])
+            new_logs = logs[num_existing_logs:]
 
-            for i in range(num_existing_logs, len(new_logs)):
-                self.function_logger.info(new_logs[i])
+            if (
+                self.function_statuses[function_name] == FunctionStatus.COMPLETED
+                and not new_logs
+            ):
+                self.logger.info(
+                    f"No new logs for completed function {function_name}, marking as complete"
+                )
+                self.function_logs_complete[function_name] = True
+                return
 
-            self.function_logs[function_name] = new_logs
+            for log in new_logs:
+                self.function_logger.info(log)
+
+            self.function_logs[function_name] = logs
 
     def _check_function_running(self, function_name: str) -> bool:
         """Check if a function is running by looking for log files in S3"""
@@ -415,22 +447,26 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             self.logger.error(f"Error checking completion for {function_name}: {e}")
             return False
 
-    def _was_invoked(self, function_name: str) -> bool:
+    def _was_invoked(self, function_name: str) -> InvocationStatus:
         """Check if a function was invoked by looking for log files in S3"""
         for invoker in self.reverse_adj_graph[function_name]:
             if self.function_statuses[invoker] != FunctionStatus.COMPLETED:
                 continue
-            self.logger.info(f"Checking if {function_name} was invoked by {invoker}")
             with self._logs_locks[invoker]:
                 logs = "\n".join(self.function_logs[invoker])
                 invoked = set(
                     re.sub(r"^" + self.workflow_name + "-", "", invocation)
                     for invocation in self.invoked_regex.findall(logs)
                 )
-                self.logger.info(f"Invoked: {invoked}")
                 if function_name in invoked:
-                    return True
-        return False
+                    return InvocationStatus.INVOKED
+        with self._status_lock:
+            if all(
+                self.function_logs_complete[invoker]
+                for invoker in self.reverse_adj_graph[function_name]
+            ):
+                return InvocationStatus.NOT_INVOKED
+        return InvocationStatus.PENDING
 
     def _set_function_status(self, function_name: str, status: FunctionStatus):
         """Set the status of a function (thread-safe)"""
@@ -618,11 +654,11 @@ def main():
             ):
                 match status:
                     case FunctionStatus.PENDING:
-                        print(f"  {function_name}: {status.value}")
+                        print(f"⏳ {function_name}: {status.value}")
                     case FunctionStatus.INVOKED:
-                        print(f"🔄 {function_name}: {status.value}")
+                        print(f"🚀 {function_name}: {status.value}")
                     case FunctionStatus.NOT_INVOKED:
-                        print(f"✅ {function_name}: {status.value}")
+                        print(f"ℹ️ {function_name}: {status.value}")
                     case FunctionStatus.RUNNING:
                         print(f"🔄 {function_name}: {status.value}")
                     case FunctionStatus.COMPLETED:
@@ -647,7 +683,8 @@ def main():
 
     # Check overall success
     all_completed = all(
-        status == FunctionStatus.COMPLETED for status in final_statuses.values()
+        status in {FunctionStatus.COMPLETED, FunctionStatus.NOT_INVOKED}
+        for status in final_statuses.values()
     )
 
     if all_completed:
