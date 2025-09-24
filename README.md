@@ -5,6 +5,7 @@ This repo includes workflows for FaaSr integration testing:
 **Workflows:**
 
 - **`main.json`**: The complete integration testing workflow.
+- **`conditional.json`**: A minimal workflow for testing conditional invocation.
 
 ## Getting Started
 
@@ -24,7 +25,7 @@ This repo includes workflows for FaaSr integration testing:
 
 4. Checkout to a new branch with a recognizable name.
 
-5. Make a copy of `main.json` and give it a recognizable name
+5. Make a copy of `main.json` or another workflow and give it a recognizable name
    - Change the `WorkflowName` attribute to a unique name.
       - **Note**: The workflow name can only contain alphanumeric characters ([a-z], [A-Z], [0-9]) or underscores (_)
 
@@ -49,7 +50,7 @@ The `workflow_runner.py` script enables the execution and monitoring of FaaSr wo
 ### Features
 
 - **Real-time Monitoring**: Continuously monitors workflow execution status
-- **Function Status Tracking**: Tracks individual function states (pending, running, completed, failed, skipped, timeout)
+- **Function Status Tracking**: Tracks individual function states (pending, invoked, not invoked, running, completed, failed, skipped, timed out)
 - **Log Streaming**: Optional real-time log streaming from S3
 - **Graceful Shutdown**: Handles interruption signals (SIGINT, SIGTERM) gracefully
 - **Thread-safe Operations**: Safe for concurrent access and monitoring
@@ -119,12 +120,14 @@ runner.cleanup()
 
 The workflow runner tracks the following function states:
 
-- **`PENDING`**: The function is waiting to start
-- **`RUNNING`**: The function is currently executing
-- **`COMPLETED`**: The function finished successfully
-- **`FAILED`**: The function encountered an error
-- **`SKIPPED`**: The function was skipped due to upstream failure
-- **`TIMEOUT`**: The function was pending or running when the workflow timed out.
+- **`PENDING`**: Waiting to start
+- **`INVOKED`**: Invoked by any function
+- **`NOT_INVOKED`**: Not invoked by any function
+- **`RUNNING`**: Currently executing
+- **`COMPLETED`**: Finished successfully
+- **`FAILED`**: Encountered an error
+- **`SKIPPED`**: Skipped due to upstream failure
+- **`TIMEOUT`**: Was in a non-complete state when the workflow timed out.
 
 ### Environment Variables
 
@@ -135,60 +138,79 @@ The following environment variables are required:
 - `GITHUB_TOKEN`: GitHub personal access token
 - `GITHUB_REPOSITORY`: GitHub repository name
 
-### Status Monitoring
-
-The Workflow Runner continuously checks function execution status.
-
-- All functions are labeled as `PENDING` upon invocation.
-- A function is labeled as `RUNNING` when a log file is created.
-- A function is labeled as `COMPLETE` when a `.done` file is created.
-- A function is labeled as `FAILED` when an `ERROR` log output is generated.
-- A function is labeled as `SKIPPED` when an upstream failure occurs.
-- A function is labeled as `TIMEOUT` when the workflow times out before the function completes or fails.
-
 ### Thread Safety
 
 The Workflow Runner is designed to be thread-safe:
 
-- All status updates are protected by locks
+- All status updates and logs are protected by locks
 - Safe for concurrent access from multiple threads
 - Graceful shutdown handling prevents race conditions
 - Clean resource management and cleanup
 
-## Writing Tests
+## Testing
 
-A `handler` fixture can be used that automatically invokes the workflow when running tests.
+### Workflow Tester
 
-- **`handler.wait_for`**: Wait for the function to complete. An exception is thrown when a function fails, causing the test to fail automatically.
-- **`handler.get_s3_key`**: Get full S3 key for a given file.
+A `WorkflowTester` can be used to automatically invoke the workflow when running tests:
 
-Use the `s3_client` fixture to run tests against function outputs on S3.
+- **`tester.bucket_name`**: Get the name of the workflow's data store bucket.
+- **`tester.s3_client`**: An S3 client for performing S3 actions.
+- **`tester.get_s3_key`**: Get the full S3 key for a given file.
+- **`tester.wait_for`**: Wait for the function to complete or have a "not invoked" state. An exception is thrown when a function fails, causing the test to fail automatically.
 
-- **`s3_client.head_object`**: Test whether an object exists.
-- **`s3_client.get_object`**: Test against the contents of an object.
+The `WorkflowTester` also includes helper functions for test assertions:
 
-For example:
+- **`tester.assert_object_exists`**: Assert whether an object exists in the workflow's data store.
+- **`tester.assert_object_does_not_exist`**: Assert whether an object does not exist in the workflow's data store.
+- **`tester.assert_content_equals`**: Assert whether an object's content equals a given string.
+- **`tester.assert_function_completed`**: Assert whether a function successfully completed.
+- **`tester.assert_function_not_invoked`**: Assert whether a function was not invoked (i.e., in a conditional workflow).
+
+### Writing Tests
+
+> **Note**: Tests are executed in the order they are listed in a file. When possible, it is recommended to write tests for functions in the order you expect the functions to complete.
+
+It is recommended to create a `tester` fixture at the top of each test file that runs the workflow being tested:
+
+```python
+@pytest.fixture(scope="module", autouse=True)
+def tester():
+    with WorkflowTester("conditional.json") as tester:
+        yield tester
+```
+
+Test data store outputs:
 
 ```py
 def test_py_api(handler: WorkflowHandler, s3_client: S3Client):
     handler.wait_for("test_py_api")
 
-    input1 = handler.get_s3_key("input1.txt")
-    input2 = handler.get_s3_key("input2.txt")
-    input3 = handler.get_s3_key("input3.txt")
-    
     # Test that input1 does not exist
-    with pytest.raises(Exception):
-        s3_client.head_object(Bucket=handler.bucket_name, Key=input1)
+    handler.assert_object_does_not_exist("input1.txt")
 
     # Test that input2 exists
-    assert s3_client.head_object(Bucket=handler.bucket_name, Key=input2) is not None
+    handler.assert_object_exists("input2.txt")
 
     # Test that input3 matches the expected content
-    assert s3_client.get_object(Bucket=handler.bucket_name, Key=input3)["Body"].read() == b"input3"
+    handler.assert_content_equals("input3.txt", "content")
 ```
 
-## Invoking Tests
+Test conditional function invocations:
+
+```py
+# Test that a function was not invoked
+def test_dont_run_on_true(tester: WorkflowTester):
+    tester.wait_for("dont_run_on_true")
+    tester.assert_function_not_invoked("dont_run_on_true")
+
+
+# Test that a function completed
+def test_run_on_true(tester: WorkflowTester):
+    tester.wait_for("run_on_true")
+    tester.assert_function_completed("run_on_true")
+```
+
+### Invoking Tests
 
 Tests can either be invoked from the VS Code testing UI or from the command line:
 

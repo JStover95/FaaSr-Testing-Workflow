@@ -3,6 +3,7 @@ import sys
 import time
 
 import pytest
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -14,15 +15,14 @@ from scripts.workflow_runner import (
 
 load_dotenv()
 
-TEST_WORKFLOW_FILE = os.getenv("TEST_WORKFLOW_FILE")
-TIMEOUT = 1800
+TIMEOUT = 120
 CHECK_INTERVAL = 1
 
 
-class WorkflowHandler:
-    def __init__(self):
+class WorkflowTester:
+    def __init__(self, workflow_file_path: str):
         self.runner = WorkflowRunner(
-            workflow_file_path=TEST_WORKFLOW_FILE,
+            workflow_file_path=workflow_file_path,
             timeout=TIMEOUT,
             check_interval=CHECK_INTERVAL,
             stream_logs=True,
@@ -32,10 +32,9 @@ class WorkflowHandler:
     def bucket_name(self):
         return self.runner.bucket_name
 
-    def get_s3_key(self, file_name: str):
-        return (
-            f"integration-tests/{self.runner.faasr_payload['InvocationID']}/{file_name}"
-        )
+    @property
+    def s3_client(self):
+        return self.runner.s3_client
 
     def __enter__(self):
         self.runner.trigger_workflow()
@@ -65,10 +64,16 @@ class WorkflowHandler:
         # Return False to not suppress any exceptions that occurred in the context
         return False
 
+    def get_s3_key(self, file_name: str):
+        return (
+            f"integration-tests/{self.runner.faasr_payload['InvocationID']}/{file_name}"
+        )
+
     def wait_for(self, function_name: str):
         status = self.runner.get_function_statuses()[function_name]
         while not (
             status == FunctionStatus.COMPLETED
+            or status == FunctionStatus.NOT_INVOKED
             or status == FunctionStatus.FAILED
             or status == FunctionStatus.SKIPPED
             or status == FunctionStatus.TIMEOUT
@@ -85,13 +90,28 @@ class WorkflowHandler:
 
         return status
 
+    def assert_object_exists(self, object_name: str):
+        key = self.get_s3_key(object_name)
+        assert self.s3_client.head_object(Bucket=self.bucket_name, Key=key) is not None
 
-@pytest.fixture(scope="session", autouse=True)
-def handler():
-    with WorkflowHandler() as handler:
-        yield handler
+    def assert_object_does_not_exist(self, object_name: str):
+        key = self.get_s3_key(object_name)
+        with pytest.raises(ClientError):
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
 
+    def assert_content_equals(self, object_name: str, expected_content: str):
+        key = self.get_s3_key(object_name)
+        content = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
+        assert content["Body"].read().decode("utf-8") == expected_content
 
-@pytest.fixture(scope="session", autouse=True)
-def s3_client(handler: WorkflowHandler):
-    return handler.runner.s3_client
+    def assert_function_completed(self, function_name: str):
+        assert (
+            self.runner.get_function_statuses()[function_name]
+            == FunctionStatus.COMPLETED
+        )
+
+    def assert_function_not_invoked(self, function_name: str):
+        assert (
+            self.runner.get_function_statuses()[function_name]
+            == FunctionStatus.NOT_INVOKED
+        )
