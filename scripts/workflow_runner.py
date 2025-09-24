@@ -338,7 +338,11 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         # Check for timeouts or shutdown
         with self._status_lock:
             for function_name, status in self.function_statuses.items():
-                if status == FunctionStatus.PENDING or status == FunctionStatus.RUNNING:
+                if status in {
+                    FunctionStatus.PENDING,
+                    FunctionStatus.INVOKED,
+                    FunctionStatus.RUNNING,
+                }:
                     if self._shutdown_requested:
                         self.function_statuses[function_name] = FunctionStatus.SKIPPED
                         self.logger.info(

@@ -2,6 +2,8 @@ import os
 import sys
 import time
 
+import pytest
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -91,6 +93,16 @@ class WorkflowTester:
     def assert_object_exists(self, object_name: str):
         key = self.get_s3_key(object_name)
         assert self.s3_client.head_object(Bucket=self.bucket_name, Key=key) is not None
+
+    def assert_object_does_not_exist(self, object_name: str):
+        key = self.get_s3_key(object_name)
+        with pytest.raises(ClientError):
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+
+    def assert_content_equals(self, object_name: str, expected_content: str):
+        key = self.get_s3_key(object_name)
+        content = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
+        assert content["Body"].read().decode("utf-8") == expected_content
 
     def assert_function_completed(self, function_name: str):
         assert (

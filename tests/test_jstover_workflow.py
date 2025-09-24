@@ -12,14 +12,14 @@ from tests.conftest import WorkflowTester
 
 
 @pytest.fixture(scope="module", autouse=True)
-def handler():
-    with WorkflowTester(workflow_file_path="jstover.json") as handler:
-        yield handler
+def tester():
+    with WorkflowTester(workflow_file_path="jstover.json") as tester:
+        yield tester
 
 
-def test_py_api(handler: WorkflowTester):
-    handler.wait_for("test_py_api")
+def test_py_api(tester: WorkflowTester):
+    tester.wait_for("test_py_api")
 
-    handler.assert_object_exists("input1.txt")
-    handler.assert_object_exists("input2.txt")
-    handler.assert_object_exists("input3.txt")
+    tester.assert_object_exists("input1.txt")
+    tester.assert_object_exists("input2.txt")
+    tester.assert_object_exists("input3.txt")
