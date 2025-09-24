@@ -13,6 +13,7 @@ from enum import Enum
 
 import boto3
 from botocore.exceptions import ClientError
+from FaaSr_py.helpers.graph_functions import build_adjacency_graph
 from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 
 from scripts.invoke_workflow import WorkflowMigrationAdapter
@@ -42,6 +43,8 @@ class FunctionStatus(Enum):
     """Test execution status"""
 
     PENDING = "pending"
+    INVOKED = "invoked"
+    NOT_INVOKED = "not_invoked"
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -79,16 +82,22 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         self.function_logger = logging.getLogger(FUNCTION_LOGGER_NAME)
         self._setup_logging()
 
+        # Initialize function statuses and logs
+        self.workflow_name = self.workflow_data.get("WorkflowName")
+        self.workflow_invoke = self.workflow_data.get("FunctionInvoke")
+        self.function_names = self.workflow_data["ActionList"].keys()
         self.function_statuses: dict[str, FunctionStatus] = {
-            function_name: FunctionStatus.PENDING
-            for function_name in self.workflow_data["ActionList"].keys()
+            function_name: FunctionStatus.INVOKED
+            if function_name == self.workflow_invoke
+            else FunctionStatus.PENDING
+            for function_name in self.function_names
         }
         self.function_logs: dict[str, list[str]] = {
-            function_name: []
-            for function_name in self.workflow_data["ActionList"].keys()
+            function_name: [] for function_name in self.function_names
         }
+
+        # Monitoring parameters
         self.timeout = timeout
-        self.seconds_since_last_status_change = 0
         self.check_interval = check_interval
         self.stream_logs = stream_logs
 
@@ -106,6 +115,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
+
+        # Build adjacency graph for monitoring
+        self.adj_graph, self.ranks = build_adjacency_graph(self.workflow_data)
 
     def _validate_environment(self):
         """Validate environment variables"""
@@ -181,9 +193,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         )
 
         last_status_change_time = time.time()
+        seconds_since_last_status_change = 0
 
         while (
-            self.seconds_since_last_status_change < self.timeout
+            seconds_since_last_status_change < self.timeout
             and not self._shutdown_requested
         ):
             all_completed = True
@@ -194,8 +207,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 functions_to_check = [
                     (name, status)
                     for name, status in self.function_statuses.items()
-                    if status == FunctionStatus.PENDING
-                    or status == FunctionStatus.RUNNING
+                    if status
+                    in {
+                        FunctionStatus.PENDING,
+                        FunctionStatus.INVOKED,
+                        FunctionStatus.RUNNING,
+                    }
                 ]
 
             # Check completion status for each function
@@ -204,35 +221,39 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                     self._update_function_logs(function_name)
 
                 all_completed = False
-                
-                if status == FunctionStatus.PENDING and self._check_function_running(
-                    function_name
-                ):
-                    self.seconds_since_last_status_change = 0
+
+                if status in {
+                    FunctionStatus.PENDING,
+                    FunctionStatus.INVOKED,
+                } and self._check_function_running(function_name):
+                    seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.RUNNING
                     self.logger.info(f"Function {function_name} running")
+
                 elif status == FunctionStatus.RUNNING and self._check_function_failed(
                     function_name
                 ):
-                    self.seconds_since_last_status_change = 0
+                    seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.FAILED
                     self.logger.info(f"Function {function_name} failed")
                     failed = True
+
                 elif (
                     status == FunctionStatus.RUNNING
                     and self._check_function_completion(function_name)
                 ):
-                    self.seconds_since_last_status_change = 0
+                    seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.COMPLETED
                     self.logger.info(f"Function {function_name} completed")
+
                 else:
-                    self.seconds_since_last_status_change = (
+                    seconds_since_last_status_change = (
                         time.time() - last_status_change_time
                     )
 
@@ -331,7 +352,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             invocation_folder = get_invocation_folder(self.faasr_payload)
 
             # Check for .done file
-            key = f"{invocation_folder}/function_completions/{function_name}.done".replace("\\", "/")
+            key = f"{invocation_folder}/function_completions/{function_name}.done".replace(
+                "\\", "/"
+            )
 
             # List objects with this prefix
             try:
