@@ -60,10 +60,35 @@
         "output1_R": "output1-R.txt",
         "output2_R": "output2-R.txt"
       },
-      "InvokeNext": [],
+      "InvokeNext": [
+        {
+          "True": "test_run_true",
+          "False": "test_dontrun_false"
+        }
+      ],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "sync1"
+    },
+    "test_run_true": {
+      "Arguments": {
+        "folder": "integration-tests",
+        "output": "run_true.txt"
+      },
+      "InvokeNext": [],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "test_run_true"
+    },
+    "test_dontrun_false": {
+      "Arguments": {
+        "folder": "integration-tests",
+        "output": "dont_run_false.txt"
+      },
+      "InvokeNext": [],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "test_dontrun_false"
     }
   },
   "ComputeServers": {
@@ -86,7 +111,9 @@
     "create_input": "ghcr.io/faasr/github-actions-python:dev",
     "test_py_api": "ghcr.io/faasr/github-actions-python:dev",
     "test_r_api": "ghcr.io/faasr/github-actions-r:dev",
-    "sync1": "ghcr.io/faasr/github-actions-python:dev"
+    "sync1": "ghcr.io/faasr/github-actions-python:dev",
+    "test_run_true": "ghcr.io/faasr/github-actions-python:dev",
+    "test_dontrun_false": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "create_input",
   "DefaultDataStore": "My_S3_Bucket",
@@ -94,7 +121,9 @@
     "create_input": "JStover95/FaaSr-Testing-Functions/test-functions",
     "test_py_api": "JStover95/FaaSr-Testing-Functions/test-functions",
     "test_r_api": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "sync1": "JStover95/FaaSr-Testing-Functions/test-functions"
+    "sync1": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_run_true": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_dontrun_false": "JStover95/FaaSr-Testing-Functions/test-functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
