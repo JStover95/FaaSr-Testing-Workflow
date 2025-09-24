@@ -168,6 +168,8 @@ The `WorkflowTester` also includes helper functions for test assertions:
 
 ### Writing Tests
 
+> **Note**: Tests are executed in the order they are listed in a file. When possible, it is recommended to write tests for functions in the order you expect the functions to complete.
+
 It is recommended to create a `tester` fixture at the top of each test file that runs the workflow being tested:
 
 ```python
@@ -196,16 +198,16 @@ def test_py_api(handler: WorkflowHandler, s3_client: S3Client):
 Test conditional function invocations:
 
 ```py
-# Test that a function completed
-def test_run_on_true(tester: WorkflowTester):
-    tester.wait_for("run_on_true")
-    tester.assert_function_completed("run_on_true")
-
-
 # Test that a function was not invoked
 def test_dont_run_on_true(tester: WorkflowTester):
     tester.wait_for("dont_run_on_true")
     tester.assert_function_not_invoked("dont_run_on_true")
+
+
+# Test that a function completed
+def test_run_on_true(tester: WorkflowTester):
+    tester.wait_for("run_on_true")
+    tester.assert_function_completed("run_on_true")
 ```
 
 ### Invoking Tests

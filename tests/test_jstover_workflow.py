@@ -18,8 +18,8 @@ def tester():
 
 
 def test_py_api(tester: WorkflowTester):
-    tester.wait_for("test_py_api")
+    tester.wait_for("create_input")
 
     tester.assert_object_exists("input1.txt")
-    tester.assert_object_exists("input2.txt")
-    tester.assert_object_exists("input3.txt")
+    tester.assert_object_does_not_exist("does_not_exist.txt")
+    tester.assert_content_equals("input2.txt", "Test input2")
