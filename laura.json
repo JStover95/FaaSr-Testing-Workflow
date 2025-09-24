@@ -22,10 +22,10 @@
         "input1": "input1.txt",
         "input2": "input2.txt",
         "input3": "input3.txt",
-        "output1": "output1.txt",
-        "output2": "output2.txt"
+        "output1": "output1-py.txt",
+        "output2": "output2-py.txt"
       },
-      "InvokeNext": [],
+      "InvokeNext": ["sync1"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_py_api"
@@ -36,13 +36,30 @@
         "input4": "input4.txt",
         "input2": "input2.txt",
         "input3": "input3.txt",
-        "output1": "output1.txt",
-        "output2": "output2.txt"
+        "output1": "output1-R.txt",
+        "output2": "output2-R.txt"
       },
-      "InvokeNext": [],
+      "InvokeNext": ["sync1"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "R",
       "FunctionName": "test_r_api"
+    },
+    "sync1": {
+      "Arguments": {
+        "folder": "integration-tests",
+        "input1": "input1.txt",
+        "input2": "input2.txt",
+        "input3": "input3.txt",
+        "input4": "input4.txt",
+        "output1_py": "output1-py.txt",
+        "output2_py": "output2-py.txt",
+        "output1_R": "output1-R.txt",
+        "output2_R": "output2-R.txt"
+      },
+      "InvokeNext": [],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "sync1"
     }
   },
   "ComputeServers": {
@@ -64,14 +81,16 @@
   "ActionContainers": {
     "create_input": "ghcr.io/faasr/github-actions-python:dev",
     "test_py_api": "ghcr.io/faasr/github-actions-python:dev",
-    "test_r_api": "ghcr.io/faasr/github-actions-r:dev"
+    "test_r_api": "ghcr.io/faasr/github-actions-r:dev",
+    "sync1": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "create_input",
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
     "create_input": "JStover95/FaaSr-Testing-Functions/test-functions",
     "test_py_api": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test_r_api": "JStover95/FaaSr-Testing-Functions/test-functions"
+    "test_r_api": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "sync1": "JStover95/FaaSr-Testing-Functions/test-functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
