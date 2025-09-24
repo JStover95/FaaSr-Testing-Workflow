@@ -8,6 +8,7 @@ import threading
 import time
 import traceback
 import uuid
+from contextlib import suppress
 from datetime import UTC, datetime
 from enum import Enum
 
@@ -104,9 +105,11 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         # Thread management
         self._status_lock = threading.Lock()
-        self._logs_lock = threading.Lock()
         self._monitoring_thread = None
-        self._logs_thread = None
+        self._logs_locks: dict[str, threading.Lock] = {
+            function_name: threading.Lock() for function_name in self.function_names
+        }
+        self._logs_threads: dict[str, threading.Thread] = {}
         self._monitoring_complete = False
         self._shutdown_requested = False
         self._cleanup_timeout = 30  # seconds to wait for graceful shutdown
@@ -224,19 +227,20 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                     FunctionStatus.PENDING,
                     FunctionStatus.INVOKED,
                 }:
-                    if self._logs_thread and self._logs_thread.is_alive():
-                        self._logs_thread.join(timeout=3)
-                    if self._logs_thread and self._logs_thread.is_alive():
-                        self.logger.warning(
-                            f"Logs thread is still alive for function {function_name}, skipping update"
-                        )
-                    else:
-                        self._logs_thread = threading.Thread(
-                            target=self._update_function_logs,
-                            args=(function_name,),
-                            daemon=True,
-                        )
-                        self._logs_thread.start()
+                    with suppress(KeyError):
+                        if self._logs_threads[function_name].is_alive():
+                            self._logs_threads[function_name].join(timeout=3)
+                        if self._logs_threads[function_name].is_alive():
+                            self.logger.warning(
+                                f"Logs thread is still alive for function {function_name}, skipping update"
+                            )
+
+                    self._logs_threads[function_name] = threading.Thread(
+                        target=self._update_function_logs,
+                        args=(function_name,),
+                        daemon=True,
+                    )
+                    self._logs_threads[function_name].start()
 
                 all_completed = False
 
@@ -346,7 +350,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         )
         new_logs = log_content["Body"].read().decode("utf-8").strip().split("\n")
 
-        with self._logs_lock:
+        with self._logs_locks[function_name]:
             num_existing_logs = len(self.function_logs[function_name])
 
             for i in range(num_existing_logs, len(new_logs)):
@@ -468,11 +472,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             bool: True if shutdown was successful, False if timeout occurred
         """
         if (not self._monitoring_thread or not self._monitoring_thread.is_alive()) and (
-            not self._logs_thread or not self._logs_thread.is_alive()
+            not self._logs_threads
+            or not all(thread.is_alive() for thread in self._logs_threads.values())
         ):
             return True
 
-        if self._logs_thread and self._logs_thread.is_alive():
+        if self._monitoring_thread and self._monitoring_thread.is_alive():
             self.logger.info("Requesting graceful shutdown of monitoring thread...")
 
             # Signal shutdown request
@@ -483,16 +488,21 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             wait_timeout = timeout if timeout is not None else self._cleanup_timeout
             self._monitoring_thread.join(timeout=wait_timeout)
 
-        if self._logs_thread and self._logs_thread.is_alive():
+        if self._logs_threads and any(
+            thread.is_alive() for thread in self._logs_threads.values()
+        ):
             self.logger.info("Requesting graceful shutdown of logs thread...")
-            self._logs_thread.join(timeout=wait_timeout)
+            for thread in self._logs_threads.values():
+                thread.join(timeout=wait_timeout)
 
         if self._monitoring_thread.is_alive():
             self.logger.warning(
                 f"Monitoring thread did not shutdown within {wait_timeout}s"
             )
             return False
-        if self._logs_thread.is_alive():
+        if self._logs_threads and any(
+            thread.is_alive() for thread in self._logs_threads.values()
+        ):
             self.logger.warning(f"Logs thread did not shutdown within {wait_timeout}s")
             return False
         else:
