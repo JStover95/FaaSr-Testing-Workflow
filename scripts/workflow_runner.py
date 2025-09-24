@@ -8,6 +8,7 @@ import threading
 import time
 import traceback
 import uuid
+from collections import defaultdict
 from contextlib import suppress
 from datetime import UTC, datetime
 from enum import Enum
@@ -124,6 +125,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
         # Build adjacency graph for monitoring
         self.adj_graph, self.ranks = build_adjacency_graph(self.workflow_data)
+        self.reverse_adj_graph = self._build_reverse_adjacency_graph()
 
     def _validate_environment(self):
         """Validate environment variables"""
@@ -188,6 +190,14 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             self.logger.error(f"Failed to initialize S3 client: {e}")
             raise InitializationError(f"Failed to initialize S3 client: {e}")
 
+    def _build_reverse_adjacency_graph(self):
+        """Build the reverse adjacency graph"""
+        reverse_adj_graph = defaultdict(set)
+        for invoker, invoked in self.adj_graph.items():
+            for function in invoked:
+                reverse_adj_graph[function].add(invoker)
+        return reverse_adj_graph
+
     def _monitor_workflow_execution(self):
         """Monitor the workflow execution.
 
@@ -205,20 +215,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             seconds_since_last_status_change < self.timeout
             and not self._shutdown_requested
         ):
-            all_completed = True
             failed = False
 
             # Get a snapshot of current statuses
             with self._status_lock:
                 functions_to_check = [
-                    (name, status)
-                    for name, status in self.function_statuses.items()
-                    if status
-                    in {
-                        FunctionStatus.PENDING,
-                        FunctionStatus.INVOKED,
-                        FunctionStatus.RUNNING,
-                    }
+                    (name, status) for name, status in self.function_statuses.items()
                 ]
 
             # Check completion status for each function
@@ -245,12 +247,19 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                         )
                         self._logs_threads[function_name].start()
 
-                all_completed = False
+                if status == FunctionStatus.PENDING:
+                    if self._was_invoked(function_name):
+                        seconds_since_last_status_change = 0
+                        last_status_change_time = time.time()
+                        with self._status_lock:
+                            self.function_statuses[function_name] = (
+                                FunctionStatus.INVOKED
+                            )
+                        self.logger.info(f"Function {function_name} invoked")
 
-                if status in {
-                    FunctionStatus.PENDING,
-                    FunctionStatus.INVOKED,
-                } and self._check_function_running(function_name):
+                elif status == FunctionStatus.INVOKED and self._check_function_running(
+                    function_name
+                ):
                     seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
                     with self._status_lock:
@@ -273,33 +282,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 ):
                     seconds_since_last_status_change = 0
                     last_status_change_time = time.time()
-
-                    # Get the functions that were invoked by the completed function
-                    invocations = self._get_invocations(function_name)
-                    should_be_invoked = set(self.adj_graph[function_name])
-                    not_invoked = should_be_invoked - invocations
-                    print("Completion ==============================================")
-                    print(f"Function {function_name} completed")
-                    print(f"Invocations: {invocations}")
-                    print(f"Should be invoked: {should_be_invoked}")
-                    print(f"Not invoked: {not_invoked}")
-
                     # Update the statuses of the functions
                     with self._status_lock:
                         self.function_statuses[function_name] = FunctionStatus.COMPLETED
-                        for function in not_invoked:
-                            self.function_statuses[function] = (
-                                FunctionStatus.NOT_INVOKED
-                            )
-                            self.logger.info(
-                                f"Function {function} not invoked by {function_name}"
-                            )
-                        for function in invocations:
-                            self.function_statuses[function] = FunctionStatus.INVOKED
-                            self.logger.info(
-                                f"Function {function} invoked by {function_name}"
-                            )
-
                     self.logger.info(f"Function {function_name} completed")
 
                 else:
@@ -307,7 +292,10 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                         time.time() - last_status_change_time
                     )
 
-            if all_completed:
+            if all(
+                status == FunctionStatus.COMPLETED
+                for status in self.function_statuses.values()
+            ):
                 self.logger.info("All functions completed")
                 break
 
@@ -427,20 +415,22 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             self.logger.error(f"Error checking completion for {function_name}: {e}")
             return False
 
-    def _get_invocations(self, function_name: str) -> set[str]:
-        """Get the functions that were invoked by a completed function"""
-        try:
-            logs = "\n".join(self.function_logs[function_name])
-            invocations = self.invoked_regex.findall(logs)
-            # Remove workflow name from invocations
-            return set(
-                re.sub(r"^" + self.workflow_name + "-", "", invocation)
-                for invocation in invocations
-            )
-        except Exception as e:
-            traceback.print_exc()
-            self.logger.error(f"Error getting invocations for {function_name}: {e}")
-            return set()
+    def _was_invoked(self, function_name: str) -> bool:
+        """Check if a function was invoked by looking for log files in S3"""
+        for invoker in self.reverse_adj_graph[function_name]:
+            if self.function_statuses[invoker] != FunctionStatus.COMPLETED:
+                continue
+            self.logger.info(f"Checking if {function_name} was invoked by {invoker}")
+            with self._logs_locks[invoker]:
+                logs = "\n".join(self.function_logs[invoker])
+                invoked = set(
+                    re.sub(r"^" + self.workflow_name + "-", "", invocation)
+                    for invocation in self.invoked_regex.findall(logs)
+                )
+                self.logger.info(f"Invoked: {invoked}")
+                if function_name in invoked:
+                    return True
+        return False
 
     def _set_function_status(self, function_name: str, status: FunctionStatus):
         """Set the status of a function (thread-safe)"""
