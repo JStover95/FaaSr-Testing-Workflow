@@ -76,8 +76,8 @@
         "output": "run_true_output.txt"
       },
       "InvokeNext": [{
-        "True": ["test_run_false"],
-        "False": ["test_dontrun_true"]
+        "False": ["test_run_false"],
+        "True": ["test_dontrun_true"]
       }],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
