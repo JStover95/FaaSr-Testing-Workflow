@@ -1,12 +1,19 @@
 {
-  "FunctionRank": 2,
   "ActionList": {
+    "test_not_ranked": {
+      "Arguments": {},
+      "InvokeNext": ["test_ranked"],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "test_not_ranked"
+    },
     "test_ranked": {
       "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
-      "FunctionName": "test_ranked"
+      "FunctionName": "test_ranked",
+      "FunctionRank": 2
     }
   },
   "ComputeServers": {
@@ -26,11 +33,13 @@
     }
   },
   "ActionContainers": {
+    "test_not_ranked": "ghcr.io/faasr/github-actions-python:dev",
     "test_ranked": "ghcr.io/faasr/github-actions-python:dev"
   },
-  "FunctionInvoke": "test_ranked",
+  "FunctionInvoke": "test_not_ranked",
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
+    "test_not_ranked": "JStover95/FaaSr-Testing-Functions/functions",
     "test_ranked": "JStover95/FaaSr-Testing-Functions/functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
