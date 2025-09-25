@@ -5,7 +5,8 @@ This repo includes workflows for FaaSr integration testing:
 **Workflows:**
 
 - **`main.json`**: The complete integration testing workflow.
-- **`conditional.json`**: A minimal workflow for testing conditional invocation.
+- **`conditional.json`**: A minimal workflow for testing conditional invocations.
+- **`ranked.json`**: A minimal workflow for testing ranked invocations.
 
 ## Getting Started
 
@@ -208,6 +209,21 @@ def test_dont_run_on_true(tester: WorkflowTester):
 def test_run_on_true(tester: WorkflowTester):
     tester.wait_for("run_on_true")
     tester.assert_function_completed("run_on_true")
+```
+
+Test ranked function invocations:
+
+```py
+# Test for a function with rank 1
+def test_red_1(tester: WorkflowTester):
+    tester.wait_for("test_ranked(1)")
+    tester.assert_function_completed("test_ranked(1)")
+
+
+# Test for a function with rank 2
+def test_ranked_2(tester: WorkflowTester):
+    tester.wait_for("test_ranked(2)")
+    tester.assert_function_completed("test_ranked(2)")
 ```
 
 ### Invoking Tests
