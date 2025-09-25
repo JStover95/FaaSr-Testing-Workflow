@@ -9,7 +9,7 @@
                 "input4": "input4.txt"
             },
             "InvokeNext": [
-                "test_r_api"
+                "test_arrow"
             ],
             "FaaSServer": "My_GitHub_Account",
             "Type": "Python",
