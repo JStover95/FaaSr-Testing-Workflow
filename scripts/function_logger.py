@@ -11,6 +11,8 @@ import threading
 import time
 from enum import Enum
 
+from scripts.utils import extract_function_name
+
 
 class InvocationStatus(Enum):
     PENDING = "pending"
@@ -59,9 +61,7 @@ class FunctionLogger:
     def _setup_logger(self) -> logging.Logger:
         logger = logging.getLogger(self.logger_name)
         handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            f"[%(levelname)s] [{self.logger_name}] %(message)s"
-        )
+        formatter = logging.Formatter(f"[{self.logger_name}] %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
@@ -98,7 +98,8 @@ class FunctionLogger:
     def get_invocation_status(self, function_name: str) -> InvocationStatus:
         if self.invocations is None:
             return InvocationStatus.PENDING
-        if function_name in self.invocations:
+        # Invocations do not include the rank
+        if extract_function_name(function_name) in self.invocations:
             return InvocationStatus.INVOKED
         return InvocationStatus.NOT_INVOKED
 
