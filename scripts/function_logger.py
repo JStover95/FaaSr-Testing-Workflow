@@ -11,7 +11,7 @@ import threading
 import time
 from enum import Enum
 
-from scripts.utils import extract_function_name
+from scripts.utils import extract_function_name, get_s3_path
 
 
 class InvocationStatus(Enum):
@@ -89,7 +89,7 @@ class FunctionLogger:
 
     @property
     def key(self) -> str:
-        return f"{self.invocation_folder}/{self.function_name}.txt".replace("\\", "/")
+        return get_s3_path(f"{self.invocation_folder}/{self.function_name}.txt")
 
     def set_function_complete(self) -> None:
         with self._lock:

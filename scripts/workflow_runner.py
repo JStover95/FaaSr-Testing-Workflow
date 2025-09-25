@@ -28,7 +28,7 @@ from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 
 from scripts.function_logger import FunctionLogger, InvocationStatus
 from scripts.invoke_workflow import WorkflowMigrationAdapter
-from scripts.utils import extract_function_name
+from scripts.utils import extract_function_name, get_s3_path
 
 LOGGER_NAME = "WorkflowRunner"
 FUNCTION_LOGGER_NAME = "FunctionLogger"
@@ -394,7 +394,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             invocation_folder = get_invocation_folder(self.faasr_payload)
 
             # Check for log files
-            key = f"{invocation_folder}/{function_name}.txt".replace("\\", "/")
+            key = get_s3_path(f"{invocation_folder}/{function_name}.txt")
 
             try:
                 self.s3_client.head_object(Bucket=self.bucket_name, Key=str(key))
@@ -423,8 +423,8 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
             # Check for .done file
             s3_function_name = function_name.replace("(", ".").replace(")", "")
-            key = f"{invocation_folder}/function_completions/{s3_function_name}.done".replace(
-                "\\", "/"
+            key = get_s3_path(
+                f"{invocation_folder}/function_completions/{s3_function_name}.done"
             )
 
             # List objects with this prefix
