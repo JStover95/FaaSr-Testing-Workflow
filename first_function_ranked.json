@@ -1,14 +1,18 @@
 {
   "ActionList": {
     "test_not_ranked": {
-      "Arguments": {},
+      "Arguments": {
+        "folder": "integration-tests"
+      },
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_not_ranked"
     },
     "test_ranked": {
-      "Arguments": {},
+      "Arguments": {
+        "folder": "integration-tests"
+      },
       "InvokeNext": ["test_not_ranked"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
