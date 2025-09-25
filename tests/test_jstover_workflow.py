@@ -1,11 +1,3 @@
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from mypy_boto3_s3 import S3Client
-else:
-    S3Client = object
-
-
 import pytest
 
 from tests.conftest import WorkflowTester
