@@ -2,7 +2,7 @@
   "ActionList": {
     "test_not_ranked": {
       "Arguments": {},
-      "InvokeNext": "test_ranked",
+      "InvokeNext": ["test_ranked"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_not_ranked"
