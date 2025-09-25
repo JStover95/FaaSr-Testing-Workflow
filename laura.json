@@ -95,7 +95,7 @@
         "folder": "integration-tests",
         "output": "run_false_output.txt"
       },
-      "InvokeNext": ["test_rank"],
+      "InvokeNext": ["test_rank(5)"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_run_false"
@@ -114,7 +114,7 @@
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
-      "FunctionName": "test_rank(5)"
+      "FunctionName": "test_rank"
     }
   },
   "ComputeServers": {
