@@ -28,6 +28,7 @@ from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 
 from scripts.function_logger import FunctionLogger, InvocationStatus
 from scripts.invoke_workflow import WorkflowMigrationAdapter
+from scripts.utils import extract_function_name
 
 LOGGER_NAME = "WorkflowRunner"
 FUNCTION_LOGGER_NAME = "FunctionLogger"
@@ -135,17 +136,6 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         # Initialize S3 client for monitoring
         self.s3_client, self.bucket_name = self._init_s3_client()
 
-        # Initialize function statuses
-        self.workflow_name = self.workflow_data.get("WorkflowName")
-        self.workflow_invoke = self.workflow_data.get("FunctionInvoke")
-        self.function_names = self.workflow_data["ActionList"].keys()
-        self.function_statuses: dict[str, FunctionStatus] = {
-            function_name: FunctionStatus.INVOKED
-            if function_name == self.workflow_invoke
-            else FunctionStatus.PENDING
-            for function_name in self.function_names
-        }
-
         # Initialize function loggers
         self.function_logs: dict[str, FunctionLogger] = {}
         self.stream_logs = stream_logs
@@ -164,6 +154,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         # Build adjacency graph for monitoring
         self.adj_graph, self.ranks = build_adjacency_graph(self.workflow_data)
         self.reverse_adj_graph = self._build_reverse_adjacency_graph()
+
+        # Initialize function statuses
+        self.workflow_name = self.workflow_data.get("WorkflowName")
+        self.workflow_invoke = self.workflow_data.get("FunctionInvoke")
+        self.function_names = self.workflow_data["ActionList"].keys()
+        self.function_statuses = self._build_function_statuses()
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
@@ -233,6 +229,22 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 reverse_adj_graph[function].add(invoker)
         return reverse_adj_graph
 
+    def _build_function_statuses(self):
+        """Build the function names"""
+        statuses = {}
+        for function_name in self.function_names:
+            if function_name == self.workflow_invoke and self.ranks[function_name] == 0:
+                statuses[function_name] = FunctionStatus.INVOKED
+            elif function_name == self.workflow_invoke:
+                for rank in range(1, self.ranks[function_name] + 1):
+                    statuses[f"{function_name}({rank})"] = FunctionStatus.INVOKED
+            elif self.ranks[function_name] == 0:
+                statuses[function_name] = FunctionStatus.PENDING
+            else:
+                for rank in range(1, self.ranks[function_name] + 1):
+                    statuses[f"{function_name}({rank})"] = FunctionStatus.PENDING
+        return statuses
+
     def _setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown on interruption"""
 
@@ -276,15 +288,8 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
             # Check completion status for each function
             for function_name, status in functions_to_check:
-                if (
-                    has_run(status)
-                    and function_name not in self.function_logs
-                    and self.ranks[function_name] == 0
-                ):
+                if has_run(status) and function_name not in self.function_logs:
                     self._start_function_logger(function_name)
-                elif has_run(status) and function_name not in self.function_logs:
-                    for rank in range(1, self.ranks[function_name] + 1):
-                        self._start_function_logger(f"{function_name}({rank})")
 
                 if pending(status):
                     invocation_status = self._get_invocation_status(function_name)
@@ -417,7 +422,8 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             invocation_folder = get_invocation_folder(self.faasr_payload)
 
             # Check for .done file
-            key = f"{invocation_folder}/function_completions/{function_name}.done".replace(
+            s3_function_name = function_name.replace("(", ".").replace(")", "")
+            key = f"{invocation_folder}/function_completions/{s3_function_name}.done".replace(
                 "\\", "/"
             )
 
@@ -439,7 +445,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
     def _get_invocation_status(self, function_name: str) -> InvocationStatus:
         """Check if a function was invoked by looking for log files in S3"""
-        for invoker in self.reverse_adj_graph[function_name]:
+        for invoker in self.reverse_adj_graph[extract_function_name(function_name)]:
             with suppress(KeyError):
                 status = self.function_logs[invoker].get_invocation_status(
                     function_name

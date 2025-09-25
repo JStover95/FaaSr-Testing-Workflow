@@ -11,9 +11,7 @@ import threading
 import time
 from enum import Enum
 
-
-def extract_function_name(function_name: str) -> str:
-    return function_name.split("(")[0]
+from scripts.utils import extract_function_name
 
 
 class InvocationStatus(Enum):
@@ -63,9 +61,7 @@ class FunctionLogger:
     def _setup_logger(self) -> logging.Logger:
         logger = logging.getLogger(self.logger_name)
         handler = logging.StreamHandler()
-        formatter = logging.Formatter(
-            f"[%(levelname)s] [{self.logger_name}] %(message)s"
-        )
+        formatter = logging.Formatter(f"[{self.logger_name}] %(message)s")
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
