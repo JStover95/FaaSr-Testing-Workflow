@@ -114,7 +114,7 @@
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
-      "FunctionName": "test_rank"
+      "FunctionName": "test_rank(5)"
     }
   },
   "ComputeServers": {
