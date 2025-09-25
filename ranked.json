@@ -2,7 +2,7 @@
   "ActionList": {
     "test_not_ranked": {
       "Arguments": {},
-      "InvokeNext": ["test_ranked"],
+      "InvokeNext": ["test_ranked(2)"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_not_ranked"
@@ -12,8 +12,7 @@
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
-      "FunctionName": "test_ranked",
-      "FunctionRank": 2
+      "FunctionName": "test_ranked"
     }
   },
   "ComputeServers": {
