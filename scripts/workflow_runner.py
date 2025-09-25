@@ -160,9 +160,14 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         self.workflow_invoke = self.workflow_data.get("FunctionInvoke")
         self.function_names = self.workflow_data["ActionList"].keys()
         self.function_statuses = self._build_function_statuses()
+        print("Function Statuses: ", self.function_statuses)
+        print("Adjacency Graph: ", self.adj_graph)
+        print("Ranks: ", self.ranks)
+        print("Reverse Adjacency Graph: ", self.reverse_adj_graph)
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
+        raise Exception("Test")
 
     def _validate_environment(self):
         """Validate environment variables"""

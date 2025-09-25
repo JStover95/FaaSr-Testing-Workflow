@@ -36,7 +36,7 @@
     "test_ranked": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "test_ranked",
-  "FunctionRank": 2,
+  "FunctionRank": 3,
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
     "test_not_ranked": "JStover95/FaaSr-Testing-Functions/functions",
