@@ -53,8 +53,8 @@
     "FunctionInvoke": "create_input",
     "DefaultDataStore": "My_S3_Bucket",
     "FunctionGitRepo": {
-        "create_input": "JStover95/FaaSr-Testing-Functions/test-functions",
-        "test_arrow": "JStover95/FaaSr-Testing-Functions/test-functions"
+        "create_input": "JStover95/FaaSr-Testing-Functions/arrow_test_functions",
+        "test_arrow": "JStover95/FaaSr-Testing-Functions/arrow_test_functions"
     },
     "LoggingDataStore": "My_S3_Bucket",
     "FaaSrLog": "FaaSrLog",
