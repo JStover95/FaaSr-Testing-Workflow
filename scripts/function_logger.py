@@ -12,6 +12,10 @@ import time
 from enum import Enum
 
 
+def extract_function_name(function_name: str) -> str:
+    return function_name.split("(")[0]
+
+
 class InvocationStatus(Enum):
     PENDING = "pending"
     INVOKED = "invoked"
@@ -98,7 +102,8 @@ class FunctionLogger:
     def get_invocation_status(self, function_name: str) -> InvocationStatus:
         if self.invocations is None:
             return InvocationStatus.PENDING
-        if function_name in self.invocations:
+        # Invocations do not include the rank
+        if extract_function_name(function_name) in self.invocations:
             return InvocationStatus.INVOKED
         return InvocationStatus.NOT_INVOKED
 

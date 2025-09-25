@@ -276,8 +276,15 @@ class WorkflowRunner(WorkflowMigrationAdapter):
 
             # Check completion status for each function
             for function_name, status in functions_to_check:
-                if has_run(status) and function_name not in self.function_logs:
+                if (
+                    has_run(status)
+                    and function_name not in self.function_logs
+                    and self.ranks[function_name] == 0
+                ):
                     self._start_function_logger(function_name)
+                elif has_run(status) and function_name not in self.function_logs:
+                    for rank in range(1, self.ranks[function_name] + 1):
+                        self._start_function_logger(f"{function_name}({rank})")
 
                 if pending(status):
                     invocation_status = self._get_invocation_status(function_name)
