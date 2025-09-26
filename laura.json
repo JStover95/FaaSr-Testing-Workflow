@@ -109,12 +109,25 @@
     },
     "test-rank": {
       "Arguments": {
-        "folder": "integration-tests"
+        "folder": "integration-tests",
+        "rank_folder": "rank_files"
+      },
+      "InvokeNext": ["sync2"],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "test_rank"
+    },
+    "sync2": {
+      "Arguments": {
+        "folder": "integration-tests",
+        "rank_folder": "rank_files",
+        "run_true_output": "run_true_output.txt",
+        "run_false_output": "run_false_output.txt"
       },
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
-      "FunctionName": "test_rank"
+      "FunctionName": "sync2"
     }
   },
   "ComputeServers": {
@@ -142,7 +155,8 @@
     "test-dontrun-false": "ghcr.io/faasr/github-actions-python:dev",
     "test-run-false": "ghcr.io/faasr/github-actions-python:dev",
     "test-dontrun-true": "ghcr.io/faasr/github-actions-python:dev",
-    "test-rank": "ghcr.io/faasr/github-actions-python:dev"
+    "test-rank": "ghcr.io/faasr/github-actions-python:dev",
+    "sync2": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "create-input",
   "DefaultDataStore": "My_S3_Bucket",
@@ -155,7 +169,8 @@
     "test_dontrun_false": "JStover95/FaaSr-Testing-Functions/test-functions",
     "test_run_false": "JStover95/FaaSr-Testing-Functions/test-functions",
     "test_dontrun_true": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test_rank": "JStover95/FaaSr-Testing-Functions/test-functions"
+    "test_rank": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "sync2": "JStover95/FaaSr-Testing-Functions/test-functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
