@@ -50,7 +50,7 @@
         "create-input": "ghcr.io/faasr/github-actions-python:dev",
         "test-arrow": "ghcr.io/faasr/github-actions-r:dev"
     },
-    "FunctionInvoke": "create_input",
+    "FunctionInvoke": "create-input",
     "DefaultDataStore": "My_S3_Bucket",
     "FunctionGitRepo": {
         "create_input": "JStover95/FaaSr-Testing-Functions/arrow_test_functions",
