@@ -147,15 +147,15 @@
   "FunctionInvoke": "create-input",
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
-    "create-input": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test-py-api": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test-r-api": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "create_input": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_py_api": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_r_api": "JStover95/FaaSr-Testing-Functions/test-functions",
     "sync1": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test-run-true": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test-dontrun-false": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test-run-false": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test-dontrun-true": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test-rank": "JStover95/FaaSr-Testing-Functions/test-functions"
+    "test_run_true": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_dontrun_false": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_run_false": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_dontrun_true": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_rank": "JStover95/FaaSr-Testing-Functions/test-functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
