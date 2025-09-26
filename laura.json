@@ -76,8 +76,8 @@
         "output": "run_true_output.txt"
       },
       "InvokeNext": [{
-        "False": ["test_run_false"],
-        "True": ["test_dontrun_true"]
+        "False": ["test-run-false"],
+        "True": ["test-dontrun-true"]
       }],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
@@ -95,7 +95,7 @@
         "folder": "integration-tests",
         "output": "run_false_output.txt"
       },
-      "InvokeNext": ["test_rank(5)"],
+      "InvokeNext": ["test-rank(5)"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_run_false"
