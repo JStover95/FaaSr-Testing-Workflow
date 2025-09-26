@@ -136,7 +136,7 @@
   "ActionContainers": {
     "create-input": "ghcr.io/faasr/github-actions-python:dev",
     "test-py-api": "ghcr.io/faasr/github-actions-python:dev",
-    "test-r-pi": "ghcr.io/faasr/github-actions-r:dev",
+    "test-r-api": "ghcr.io/faasr/github-actions-r:dev",
     "sync1": "ghcr.io/faasr/github-actions-python:dev",
     "test-run-true": "ghcr.io/faasr/github-actions-python:dev",
     "test-dontrun-false": "ghcr.io/faasr/github-actions-python:dev",
