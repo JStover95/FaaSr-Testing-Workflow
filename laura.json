@@ -160,5 +160,5 @@
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
   "InvocationID": "",
-  "WorkflowName": "Laura-Workflow"
+  "WorkflowName": "Laura_Workflow"
 }
