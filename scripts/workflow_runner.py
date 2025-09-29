@@ -559,7 +559,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
     ###################
     # Private helpers #
     ###################
-    def _iter_ranks(self, function_name: str) -> Generator[str]:
+    def _iter_ranks(self, function_name: str) -> Generator[str, None, None]:
         """Iterate over the ranks of a function"""
         for rank in range(1, self.ranks[function_name] + 1):
             yield f"{function_name}({rank})"
