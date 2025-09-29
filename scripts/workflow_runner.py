@@ -393,7 +393,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         self.logger.info(f"Started function logger for {function_name}")
 
     def _handle_pending(self, function_name: str) -> None:
-        invocation_status = self._get_invocation_status(function_name)
+        invocation_status = self._check_invocation_status(function_name)
         if invocation_status == InvocationStatus.INVOKED:
             self._reset_timer()
             with self._status_lock:
@@ -574,18 +574,33 @@ class WorkflowRunner(WorkflowMigrationAdapter):
                 raise e
         return True
 
-    def _get_invocation_status(self, function_name: str) -> InvocationStatus:
+    def _check_invocation_status(self, function_name: str) -> InvocationStatus:
         """Check if a function was invoked by looking for log files in S3"""
         for invoker in self.reverse_adj_graph[extract_function_name(function_name)]:
-            with suppress(KeyError):
-                status = self.function_logs[invoker].get_invocation_status(
-                    function_name
-                )
-                if status == InvocationStatus.INVOKED:
-                    return InvocationStatus.INVOKED
-                elif status == InvocationStatus.NOT_INVOKED:
-                    return InvocationStatus.NOT_INVOKED
-        return InvocationStatus.PENDING
+            if self.ranks[invoker] > 1:
+                for rank in self._iter_ranks(invoker):
+                    if status := self._get_invocation_status(rank, function_name):
+                        return status
+            else:
+                if status := self._get_invocation_status(invoker, function_name):
+                    return status
+
+        # When no invokers are pending and none invoked the function
+        return InvocationStatus.NOT_INVOKED
+
+    def _get_invocation_status(
+        self,
+        invoker: str,
+        function_name: str,
+    ) -> InvocationStatus | None:
+        try:
+            status = self.function_logs[invoker].get_invocation_status(function_name)
+            if status == InvocationStatus.INVOKED:
+                return InvocationStatus.INVOKED
+            if status == InvocationStatus.PENDING:
+                return InvocationStatus.PENDING
+        except KeyError:
+            return InvocationStatus.PENDING
 
 
 def main():
