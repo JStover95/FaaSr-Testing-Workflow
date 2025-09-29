@@ -102,6 +102,10 @@ def has_completed(status: FunctionStatus) -> bool:
     return completed(status) or not_invoked(status)
 
 
+def has_final_state(status: FunctionStatus) -> bool:
+    return completed(status) or failed(status) or timed_out(status) or skipped(status)
+
+
 class StopMonitoring(Exception):
     """Exception raised to stop monitoring"""
 
@@ -339,12 +343,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         # Check for timeouts or shutdown
         with self._status_lock:
             for function_name, status in self.function_statuses.items():
-                if not has_completed(status) and self._shutdown_requested:
+                if not has_final_state(status) and self._shutdown_requested:
                     self.function_statuses[function_name] = FunctionStatus.SKIPPED
                     self.logger.info(
                         f"Function {function_name} skipped due to shutdown"
                     )
-                elif not has_completed(status):
+                elif not has_final_state(status):
                     self.function_statuses[function_name] = FunctionStatus.TIMEOUT
                     self.logger.warning(f"Function {function_name} timed out")
 
