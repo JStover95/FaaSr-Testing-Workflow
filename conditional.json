@@ -2,57 +2,57 @@
   "ActionList": {
     "sync": {
       "Arguments": {},
-      "InvokeNext": ["return_true", "return_false"],
+      "InvokeNext": ["return-true", "return-false"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "sync"
     },
-    "return_true": {
+    "return-true": {
       "Arguments": {},
       "InvokeNext": [
         {
-          "True": ["run_on_true"],
-          "False": ["dont_run_on_true"]
+          "True": ["run-on-true"],
+          "False": ["dont-run-on-true"]
         }
       ],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "return_true"
     },
-    "return_false": {
+    "return-false": {
       "Arguments": {},
       "InvokeNext": [
         {
-          "True": ["dont_run_on_false"],
-          "False": ["run_on_false"]
+          "True": ["dont-run-on-false"],
+          "False": ["run-on-false"]
         }
       ],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "return_false"
     },
-    "run_on_true": {
+    "run-on-true": {
       "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "run_on_true"
     },
-    "dont_run_on_true": {
+    "dont-run-on-true": {
       "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "dont_run_on_true"
     },
-    "run_on_false": {
+    "run-on-false": {
       "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "run_on_false"
     },
-    "dont_run_on_false": {
+    "dont-run-on-false": {
       "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
@@ -78,23 +78,23 @@
   },
   "ActionContainers": {
     "sync": "ghcr.io/faasr/github-actions-python:dev",
-    "return_true": "ghcr.io/faasr/github-actions-python:dev",
-    "return_false": "ghcr.io/faasr/github-actions-python:dev",
-    "run_on_true": "ghcr.io/faasr/github-actions-python:dev",
-    "run_on_false": "ghcr.io/faasr/github-actions-python:dev",
-    "dont_run_on_true": "ghcr.io/faasr/github-actions-python:dev",
-    "dont_run_on_false": "ghcr.io/faasr/github-actions-python:dev"
+    "return-true": "ghcr.io/faasr/github-actions-python:dev",
+    "return-false": "ghcr.io/faasr/github-actions-python:dev",
+    "run-on-true": "ghcr.io/faasr/github-actions-python:dev",
+    "run-on-false": "ghcr.io/faasr/github-actions-python:dev",
+    "dont-run-on-true": "ghcr.io/faasr/github-actions-python:dev",
+    "dont-run-on-false": "ghcr.io/faasr/github-actions-python:dev"
   },
   "FunctionInvoke": "sync",
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
     "sync": "JStover95/FaaSr-Testing-Functions/functions",
-    "return_true": "JStover95/FaaSr-Testing-Functions/functions",
-    "return_false": "JStover95/FaaSr-Testing-Functions/functions",
-    "run_on_true": "JStover95/FaaSr-Testing-Functions/functions",
-    "run_on_false": "JStover95/FaaSr-Testing-Functions/functions",
-    "dont_run_on_true": "JStover95/FaaSr-Testing-Functions/functions",
-    "dont_run_on_false": "JStover95/FaaSr-Testing-Functions/functions"
+    "return-true": "JStover95/FaaSr-Testing-Functions/functions",
+    "return-false": "JStover95/FaaSr-Testing-Functions/functions",
+    "run-on-true": "JStover95/FaaSr-Testing-Functions/functions",
+    "run-on-false": "JStover95/FaaSr-Testing-Functions/functions",
+    "dont-run-on-true": "JStover95/FaaSr-Testing-Functions/functions",
+    "dont-run-on-false": "JStover95/FaaSr-Testing-Functions/functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
