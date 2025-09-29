@@ -1,5 +1,7 @@
 from typing import TYPE_CHECKING
 
+from botocore.exceptions import ClientError
+
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
 else:
@@ -78,6 +80,11 @@ class FunctionLogger:
             return "\n".join(self._logs)
 
     @property
+    def function_complete(self) -> bool:
+        with self._lock:
+            return self._function_complete
+
+    @property
     def logs_complete(self) -> bool:
         with self._lock:
             return self._logs_complete
@@ -91,9 +98,12 @@ class FunctionLogger:
     def key(self) -> str:
         return get_s3_path(f"{self.invocation_folder}/{self.function_name}.txt")
 
-    def set_function_complete(self) -> None:
-        with self._lock:
-            self._function_complete = True
+    @property
+    def done_key(self) -> str:
+        s3_function_name = self.function_name.replace("(", ".").replace(")", "")
+        return get_s3_path(
+            f"{self.invocation_folder}/function_completions/{s3_function_name}.done"
+        )
 
     def get_invocation_status(self, function_name: str) -> InvocationStatus:
         if self.invocations is None:
@@ -119,30 +129,39 @@ class FunctionLogger:
                 for log in new_logs:
                     self.logger.info(log)
 
-            if self._get_function_complete() and not new_logs:
-                self._set_logs_complete()
-            elif self._check_for_failure():
+            if self._check_for_failure():
                 self._set_function_failed()
+                self._set_logs_complete()
+            elif not self.function_complete and self._check_for_done():
+                self._set_function_complete()
+            elif self.function_complete and not new_logs:
                 self._set_logs_complete()
 
             time.sleep(self.interval_seconds)
 
         self._set_invocations()
 
+    def _check_for_done(self) -> bool:
+        try:
+            self.s3_client.head_object(Bucket=self.bucket_name, Key=self.done_key)
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "404":
+                return False
+            else:
+                raise e
+        return True
+
     def _get_from_s3(self) -> list[str]:
-        log_content = self.s3_client.get_object(
-            Bucket=self.bucket_name,
-            Key=self.key,
-        )
+        log_content = self.s3_client.get_object(Bucket=self.bucket_name, Key=self.key)
         return log_content["Body"].read().decode("utf-8").strip().split("\n")
 
     def _update_logs(self, new_logs: list[str]) -> None:
         with self._lock:
             self._logs += new_logs
 
-    def _get_function_complete(self) -> bool:
+    def _set_function_complete(self) -> None:
         with self._lock:
-            return self._function_complete
+            self._function_complete = True
 
     def _set_logs_complete(self) -> None:
         with self._lock:

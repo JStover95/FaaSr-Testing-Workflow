@@ -405,7 +405,6 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         self._reset_timer()
         with self._status_lock:
             self.function_statuses[function_name] = FunctionStatus.COMPLETED
-        self.function_logs[function_name].set_function_complete()
         self.logger.info(f"Function {function_name} completed")
 
     def _handle_failed(self, function_name: str) -> None:
@@ -439,19 +438,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         return False
 
     def _check_function_completed(self, function_name: str) -> bool:
-        """Check if a function has completed by looking for .done file in S3"""
-        try:
-            invocation_folder = get_invocation_folder(self.faasr_payload)
-            s3_function_name = function_name.replace("(", ".").replace(")", "")
-            key = get_s3_path(
-                f"{invocation_folder}/function_completions/{s3_function_name}.done"
-            )
-            return self._check_object_exists(key)
-
-        except Exception as e:
-            traceback.print_exc()
-            self.logger.error(f"Error checking completion for {function_name}: {e}")
-            return False
+        with suppress(KeyError):
+            return self.function_logs[function_name].logs_complete
+        return False
 
     def _set_function_status(self, function_name: str, status: FunctionStatus):
         """Set the status of a function (thread-safe)"""
