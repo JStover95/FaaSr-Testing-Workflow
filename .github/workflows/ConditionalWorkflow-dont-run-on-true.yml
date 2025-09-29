@@ -1,4 +1,4 @@
-name: ConditionalWorkflow-return_true
+name: ConditionalWorkflow-dont-run-on-true
 
 on:
   workflow_dispatch:

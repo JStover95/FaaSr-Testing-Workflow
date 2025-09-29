@@ -1,4 +1,4 @@
-name: ConditionalWorkflow-sync
+name: ConditionalWorkflow-run-on-true
 
 on:
   workflow_dispatch:
