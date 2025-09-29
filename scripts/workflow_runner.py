@@ -103,7 +103,13 @@ def has_completed(status: FunctionStatus) -> bool:
 
 
 def has_final_state(status: FunctionStatus) -> bool:
-    return completed(status) or failed(status) or timed_out(status) or skipped(status)
+    return (
+        completed(status)
+        or not_invoked(status)
+        or failed(status)
+        or timed_out(status)
+        or skipped(status)
+    )
 
 
 class StopMonitoring(Exception):

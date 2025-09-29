@@ -89,12 +89,12 @@
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
     "sync": "JStover95/FaaSr-Testing-Functions/functions",
-    "return-true": "JStover95/FaaSr-Testing-Functions/functions",
-    "return-false": "JStover95/FaaSr-Testing-Functions/functions",
-    "run-on-true": "JStover95/FaaSr-Testing-Functions/functions",
-    "run-on-false": "JStover95/FaaSr-Testing-Functions/functions",
-    "dont-run-on-true": "JStover95/FaaSr-Testing-Functions/functions",
-    "dont-run-on-false": "JStover95/FaaSr-Testing-Functions/functions"
+    "return_true": "JStover95/FaaSr-Testing-Functions/functions",
+    "return_false": "JStover95/FaaSr-Testing-Functions/functions",
+    "run_on_true": "JStover95/FaaSr-Testing-Functions/functions",
+    "run_on_false": "JStover95/FaaSr-Testing-Functions/functions",
+    "dont_run_on_true": "JStover95/FaaSr-Testing-Functions/functions",
+    "dont_run_on_false": "JStover95/FaaSr-Testing-Functions/functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
