@@ -1,4 +1,4 @@
-name: JStover-Workflow-create_input
+name: Arrow-Workflow-create-input
 
 on:
   workflow_dispatch:

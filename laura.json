@@ -1,6 +1,6 @@
 {
   "ActionList": {
-    "create_input": {
+    "create-input": {
       "Arguments": {
         "folder": "integration-tests",
         "input1": "input1.txt",
@@ -9,14 +9,14 @@
         "input4": "input4.txt"
       },
       "InvokeNext": [
-        "test_py_api",
-        "test_r_api"
+        "test-py-api",
+        "test-r-api"
       ],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "create_input"
     },
-    "test_py_api": {
+    "test-py-api": {
       "Arguments": {
         "folder": "integration-tests",
         "input1": "input1.txt",
@@ -32,7 +32,7 @@
       "Type": "Python",
       "FunctionName": "test_py_api"
     },
-    "test_r_api": {
+    "test-r-api": {
       "Arguments": {
         "folder": "integration-tests",
         "input4": "input4.txt",
@@ -62,33 +62,72 @@
       },
       "InvokeNext": [
         {
-          "True": ["test_run_true"],
-          "False": ["test_dontrun_false"]
+          "True": ["test-run-true"],
+          "False": ["test-dontrun-false"]
         }
       ],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "sync1"
     },
-    "test_run_true": {
+    "test-run-true": {
       "Arguments": {
         "folder": "integration-tests",
-        "output": "run_true.txt"
+        "output": "run_true_output.txt"
       },
-      "InvokeNext": [],
+      "InvokeNext": [{
+        "False": ["test-run-false"],
+        "True": ["test-dontrun-true"]
+      }],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_run_true"
     },
-    "test_dontrun_false": {
-      "Arguments": {
-        "folder": "integration-tests",
-        "output": "dont_run_false.txt"
-      },
+    "test-dontrun-false": {
+      "Arguments": {},
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
       "FunctionName": "test_dontrun_false"
+    },
+    "test-run-false": {
+      "Arguments": {
+        "folder": "integration-tests",
+        "output": "run_false_output.txt"
+      },
+      "InvokeNext": ["test-rank(5)"],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "test_run_false"
+    },
+    "test-dontrun-true": {
+      "Arguments": {},
+      "InvokeNext": [],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "test_dontrun_true"
+    },
+    "test-rank": {
+      "Arguments": {
+        "folder": "integration-tests",
+        "rank_folder": "rank_files"
+      },
+      "InvokeNext": ["sync2"],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "test_rank"
+    },
+    "sync2": {
+      "Arguments": {
+        "folder": "integration-tests",
+        "rank_folder": "rank_files",
+        "run_true_output": "run_true_output.txt",
+        "run_false_output": "run_false_output.txt"
+      },
+      "InvokeNext": [],
+      "FaaSServer": "My_GitHub_Account",
+      "Type": "Python",
+      "FunctionName": "sync2"
     }
   },
   "ComputeServers": {
@@ -108,14 +147,18 @@
     }
   },
   "ActionContainers": {
-    "create_input": "ghcr.io/faasr/github-actions-python:dev",
-    "test_py_api": "ghcr.io/faasr/github-actions-python:dev",
-    "test_r_api": "ghcr.io/faasr/github-actions-r:dev",
+    "create-input": "ghcr.io/faasr/github-actions-python:dev",
+    "test-py-api": "ghcr.io/faasr/github-actions-python:dev",
+    "test-r-api": "ghcr.io/faasr/github-actions-r:dev",
     "sync1": "ghcr.io/faasr/github-actions-python:dev",
-    "test_run_true": "ghcr.io/faasr/github-actions-python:dev",
-    "test_dontrun_false": "ghcr.io/faasr/github-actions-python:dev"
+    "test-run-true": "ghcr.io/faasr/github-actions-python:dev",
+    "test-dontrun-false": "ghcr.io/faasr/github-actions-python:dev",
+    "test-run-false": "ghcr.io/faasr/github-actions-python:dev",
+    "test-dontrun-true": "ghcr.io/faasr/github-actions-python:dev",
+    "test-rank": "ghcr.io/faasr/github-actions-python:dev",
+    "sync2": "ghcr.io/faasr/github-actions-python:dev"
   },
-  "FunctionInvoke": "create_input",
+  "FunctionInvoke": "create-input",
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
     "create_input": "JStover95/FaaSr-Testing-Functions/test-functions",
@@ -123,10 +166,14 @@
     "test_r_api": "JStover95/FaaSr-Testing-Functions/test-functions",
     "sync1": "JStover95/FaaSr-Testing-Functions/test-functions",
     "test_run_true": "JStover95/FaaSr-Testing-Functions/test-functions",
-    "test_dontrun_false": "JStover95/FaaSr-Testing-Functions/test-functions"
+    "test_dontrun_false": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_run_false": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_dontrun_true": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "test_rank": "JStover95/FaaSr-Testing-Functions/test-functions",
+    "sync2": "JStover95/FaaSr-Testing-Functions/test-functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
   "InvocationID": "",
-  "WorkflowName": "Laura-Workflow"
+  "WorkflowName": "Laura_Workflow"
 }

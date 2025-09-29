@@ -233,12 +233,12 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         """Build the function names"""
         statuses = {}
         for function_name in self.function_names:
-            if function_name == self.workflow_invoke and self.ranks[function_name] == 0:
+            if function_name == self.workflow_invoke and self.ranks[function_name] <= 1:
                 statuses[function_name] = FunctionStatus.INVOKED
             elif function_name == self.workflow_invoke:
                 for rank in range(1, self.ranks[function_name] + 1):
                     statuses[f"{function_name}({rank})"] = FunctionStatus.INVOKED
-            elif self.ranks[function_name] == 0:
+            elif self.ranks[function_name] <= 1:
                 statuses[function_name] = FunctionStatus.PENDING
             else:
                 for rank in range(1, self.ranks[function_name] + 1):

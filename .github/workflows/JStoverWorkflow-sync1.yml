@@ -1,4 +1,4 @@
-name: RankedWorkflow-test_ranked
+name: JStoverWorkflow-sync1
 
 on:
   workflow_dispatch:

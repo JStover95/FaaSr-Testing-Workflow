@@ -1,4 +1,4 @@
-name: RankedWorkflow-test_not_ranked
+name: Laura_Workflow-sync1
 
 on:
   workflow_dispatch:

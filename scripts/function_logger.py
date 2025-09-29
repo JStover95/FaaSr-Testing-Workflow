@@ -23,7 +23,7 @@ class InvocationStatus(Enum):
 class FunctionLogger:
     failed_regex = re.compile(r"\[[\d\.]+?\] \[ERROR\]")
     invoked_regex = re.compile(
-        r"(?<=\[scheduler.py\] GitHub Action: Successfully invoked: )[a-zA-Z\-_]+"
+        r"(?<=\[scheduler.py\] GitHub Action: Successfully invoked: )[a-zA-Z][a-zA-Z0-9\-]+"
     )
 
     def __init__(
