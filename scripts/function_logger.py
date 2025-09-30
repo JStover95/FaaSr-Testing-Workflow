@@ -46,17 +46,17 @@ class FunctionLogger:
         self.s3_client = s3_client
         self.stream_logs = stream_logs
         self.interval_seconds = interval_seconds
-        self.invocations: set[str] | None = None
 
         # Setup logger
         self.logger_name = f"FunctionLogger-{function_name}"
         self.logger = self._setup_logger()
         self._logs: list[str] = []
 
-        # Initialize flags
+        # Initialize statuses
         self._function_complete = False
         self._logs_complete = False
         self._function_failed = False
+        self._invocations: set[str] | None = None
 
         # Thread management
         self._thread: threading.Thread | None = None
@@ -140,6 +140,19 @@ class FunctionLogger:
         with self._lock:
             return self._function_failed
 
+    @property
+    def invocations(self) -> set[str] | None:
+        """
+        Get the invocations (thread-safe).
+
+        Returns:
+            set[str] | None: The invocations.
+        """
+        with self._lock:
+            if self._invocations is None:
+                return None
+            return self._invocations.copy()
+
     def _update_logs(self, new_logs: list[str]) -> None:
         """
         Update the logs (thread-safe).
@@ -165,19 +178,17 @@ class FunctionLogger:
         with self._lock:
             self._function_failed = True
 
-    def _set_invocations(self) -> set[str]:
+    def _set_invocations(self) -> None:
         """
         Set the function's invocations (thread-safe).
 
         This pulls the names of all invoked functions from the logs (excluding ranks).
-
-        Returns:
-            set[str]: The function's invocations.
         """
+        logs_content = self.logs_content
         with self._lock:
-            self.invocations = set(
+            self._invocations = set(
                 re.sub(r"^" + self.workflow_name + "-", "", invocation)
-                for invocation in self.invoked_regex.findall(self.logs_content)
+                for invocation in self.invoked_regex.findall(logs_content)
             )
 
     @property
@@ -210,7 +221,7 @@ class FunctionLogger:
         """
         Get the invocation status of a function invoked by this function.
 
-        - If the logs are not complete, return `PENDING`.
+        - If invocations have not been registered, return `PENDING`.
         - If the function was invoked, return `INVOKED`.
         - Otherwise, return `NOT_INVOKED`.
 
@@ -220,9 +231,8 @@ class FunctionLogger:
         Returns:
             InvocationStatus: The invocation status of the function.
         """
-        if not self.logs_complete and self.invocations is None:
+        if self.invocations is None:
             return InvocationStatus.PENDING
-        # Invocations do not include the rank
         if extract_function_name(function_name) in self.invocations:
             return InvocationStatus.INVOKED
         return InvocationStatus.NOT_INVOKED
