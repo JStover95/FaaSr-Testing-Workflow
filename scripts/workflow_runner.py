@@ -161,7 +161,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         self.workflow_name = self.workflow_data.get("WorkflowName")
         self.workflow_invoke = self.workflow_data.get("FunctionInvoke")
         self.function_names = self.workflow_data["ActionList"].keys()
-        self.function_statuses = self._build_function_statuses()
+        self._function_statuses = self._build_function_statuses()
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
@@ -287,15 +287,15 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         statuses = {}
         for function_name in self.function_names:
             if function_name == self.workflow_invoke and self.ranks[function_name] <= 1:
-                self._set_status(function_name, FunctionStatus.INVOKED)
+                statuses[function_name] = FunctionStatus.INVOKED
             elif function_name == self.workflow_invoke:
                 for rank in self._iter_ranks(function_name):
-                    self._set_status(rank, FunctionStatus.INVOKED)
+                    statuses[rank] = FunctionStatus.INVOKED
             elif self.ranks[function_name] <= 1:
-                self._set_status(function_name, FunctionStatus.PENDING)
+                statuses[function_name] = FunctionStatus.PENDING
             else:
                 for rank in self._iter_ranks(function_name):
-                    self._set_status(rank, FunctionStatus.PENDING)
+                    statuses[rank] = FunctionStatus.PENDING
         return statuses
 
     def _setup_signal_handlers(self) -> None:
@@ -330,7 +330,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             dict[str, FunctionStatus]: A copy of the function statuses.
         """
         with self._status_lock:
-            return self.function_statuses.copy()
+            return self._function_statuses.copy()
 
     @property
     def monitoring_complete(self) -> bool:
@@ -373,7 +373,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             status: The status to set the function to.
         """
         with self._status_lock:
-            self.function_statuses[function_name] = status
+            self._function_statuses[function_name] = status
 
     #######################
     # Workflow monitoring #
@@ -390,7 +390,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         - Calls `_finish_monitoring` when the monitoring is complete.
         """
         self.logger.info(
-            f"Monitoring workflow execution for functions: {', '.join(self.function_statuses.keys())}"
+            f"Monitoring workflow execution for functions: {', '.join(self.get_function_statuses().keys())}"
         )
 
         self._reset_timer()
@@ -435,7 +435,9 @@ class WorkflowRunner(WorkflowMigrationAdapter):
             elif running(status) and self._check_function_completed(function_name):
                 self._handle_completed(function_name)
 
-        if all(has_completed(status) for status in self.function_statuses.values()):
+        if all(
+            has_completed(status) for status in self.get_function_statuses().values()
+        ):
             self.logger.info("All functions completed")
             raise StopMonitoring("All functions completed")
 
@@ -454,7 +456,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         - Marks the monitoring as complete.
         """
         # Check for timeouts or shutdown
-        for function_name, status in self.function_statuses.items():
+        for function_name, status in self.get_function_statuses().items():
             if not has_final_state(status) and self.shutdown_requested:
                 self._set_status(function_name, FunctionStatus.SKIPPED)
                 self.logger.info(f"Function {function_name} skipped due to shutdown")
@@ -575,7 +577,7 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         Args:
             function_name: The name of the function to handle.
         """
-        for function_name, status in self.function_statuses.items():
+        for function_name, status in self.get_function_statuses().items():
             if not has_completed(status):
                 self._set_status(function_name, FunctionStatus.SKIPPED)
                 self.logger.info(f"Skipping function {function_name} on failure")
