@@ -392,6 +392,7 @@ jobs:
     container: {container_image}
     env:
       TOKEN: ${{{{ secrets.My_GitHub_Account_PAT }}}}
+      GH_PAT: ${{{{ secrets.My_GitHub_Account_PAT }}}}
       My_GitHub_Account_PAT: ${{{{ secrets.My_GitHub_Account_PAT }}}}
       My_S3_Bucket_AccessKey: ${{{{ secrets.My_S3_Bucket_AccessKey }}}}
       My_S3_Bucket_SecretKey: ${{{{ secrets.My_S3_Bucket_SecretKey }}}}
