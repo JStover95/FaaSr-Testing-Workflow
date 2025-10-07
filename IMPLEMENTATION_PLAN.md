@@ -117,7 +117,7 @@ setup(
 [project]
 name = "FaaSr_py"
 version = "1.0.0"
-dependencies = [...]
+dependencies = ["..."]
 
 [project.optional-dependencies]
 testing = ["pytest>=7.4.0"]
