@@ -83,65 +83,6 @@ To maintain this behavior, the invoker called by the FAASR-INVOKE action could d
 1. Separate workflow data and invocation into different functions outside of `main`, allowing `WorkflowRunner` to use its own invocation logic.
 2. Write the invoker as a class (like `WorkflowMigrationAdapter`) that the `WorkflowRunner` could then override or use.
 
-## Pip Optional Dependencies
-
-The testing framework can come bundled with [optional dependencies](https://pydevtools.com/handbook/explanation/what-are-optional-dependencies-and-dependency-groups/) for testing. These optional dependencies could then be installed with `pip install faasr-backend[testing]`.
-
-Optional dependencies can be defined with `setup.py` or `pyproject.toml` (recommended).
-
-### 1. Defining Optional Dependencies with `setup.py`
-
-```python
-from setuptools import find_packages, setup
-
-with open("requirements.txt") as f:
-    requirements = f.read().splitlines()
-
-setup(
-    name="FaaSr_py",
-    version="0.1.13",
-    packages=find_packages(),
-    include_package_data=True,
-    install_requires=requirements,
-    extras_require={
-        "testing": [
-            "pytest>=7.4.0",
-        ]
-    }
-)
-```
-
-### 2. Defining Optional Dependencies with `pyproject.toml`
-
-```toml
-[project]
-name = "FaaSr_py"
-version = "1.0.0"
-dependencies = ["..."]
-
-[project.optional-dependencies]
-testing = ["pytest>=7.4.0"]
-```
-
-## Implementation with Existing Package Code
-
-It may be ideal to use the `testing` directory for the testing utils and move actual tests out of the package directory.
-
-```plaintext
-FaaSr_py/
-└── testing/
-    ├── __init__.py
-    ├── utils/
-    │   ├── __init__.py
-    │   ├── exceptions.py
-    │   ├── enums.py
-    │   ├── utils.py
-    ├── function_logger.py
-    ├── function_monitor.py
-    ├── workflow_runner.py
-    └── workflow_tester.py
-```
-
 ### Files and Interfaces
 
 #### `exceptions.py`
@@ -292,7 +233,7 @@ def test_validate(tester: WorkflowTester):
     ...
 ```
 
-### Using `WorkflowRunner Directly
+### Using `WorkflowRunner` Directly
 
 A user may want to use the `WorkflowRunner` directly for use cases outside of pytest. For example:
 
@@ -337,6 +278,63 @@ while not runner.monitoring_complete:
     previous_statuses = current_statuses.copy()
 ```
 
-## Features to Add
+## Pip Optional Dependencies
 
-- Performance monitoring
+> **Note**: installing optional dependencies with pip does not change what source code is installed, only which *dependencies* are installed. Currently, this means there will be no difference between running `pip install faasr-backend` and `pip install faasr-backend[testing]`; however, it will be important to have for future additions like performance monitoring where we may use libraries like `pandas` or `numpy`.
+
+The testing framework can come bundled with [optional dependencies](https://pydevtools.com/handbook/explanation/what-are-optional-dependencies-and-dependency-groups/) for testing. These optional dependencies could then be installed with `pip install faasr-backend[testing]`.
+
+Optional dependencies can be defined with `setup.py` or `pyproject.toml` (recommended).
+
+### 1. Defining Optional Dependencies with `setup.py`
+
+```python
+from setuptools import find_packages, setup
+
+with open("requirements.txt") as f:
+    requirements = f.read().splitlines()
+
+setup(
+    name="FaaSr_py",
+    version="0.1.13",
+    packages=find_packages(),
+    include_package_data=True,
+    install_requires=requirements,
+    extras_require={
+        "testing": [
+            "pytest>=7.4.0",
+        ]
+    }
+)
+```
+
+### 2. Defining Optional Dependencies with `pyproject.toml`
+
+```toml
+[project]
+name = "FaaSr_py"
+version = "1.0.0"
+dependencies = ["..."]
+
+[project.optional-dependencies]
+testing = ["pytest>=7.4.0"]
+```
+
+## Implementation with Existing Package Code
+
+It may be ideal to use the `testing` directory for the testing utils and move actual tests out of the package directory.
+
+```plaintext
+FaaSr_py/
+└── testing/
+    ├── __init__.py
+    ├── utils/
+    │   ├── __init__.py
+    │   ├── exceptions.py
+    │   ├── enums.py
+    │   ├── utils.py
+    ├── function_logger.py
+    ├── function_monitor.py
+    ├── workflow_runner.py
+    └── workflow_tester.py
+```
