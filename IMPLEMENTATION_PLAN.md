@@ -131,11 +131,11 @@ It may be ideal to use the `testing` directory for the testing utils and move ac
 FaaSr_py/
 └── testing/
     ├── __init__.py
-    └── utils/
-        ├── __init__.py
-        ├── exceptions.py
-        ├── enums.py
-        ├── utils.py
+    ├── utils/
+    │   ├── __init__.py
+    │   ├── exceptions.py
+    │   ├── enums.py
+    │   ├── utils.py
     ├── function_logger.py
     ├── function_monitor.py
     ├── workflow_runner.py
