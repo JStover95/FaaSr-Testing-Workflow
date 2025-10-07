@@ -13,7 +13,7 @@ A workflow invocation is isolated from other workflow runs on S3 using its `Invo
 ```plaintext
 s3-bucket/
 └── folder-name/
-    └── 4f290d29-7826-412c-a148-2d8f66c81b2f/
+    ├── 4f290d29-7826-412c-a148-2d8f66c81b2f/
     │   ├── function1_output.txt
     │   └── function2_output.txt
     └── ba7e2b99-ebe2-41b2-8c0d-56cbaea34993/
