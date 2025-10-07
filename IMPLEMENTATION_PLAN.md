@@ -260,9 +260,6 @@ user-repo/
 ├── workflow.json               # User-defined workflow
 └── tests/                      # User-defined test suite with pytest
     ├── __init__.py
-    ├── test_initialize.py
-    ├── test_process.py
-    ├── test_validate.py
     └── integration_tests.py
 ```
 
