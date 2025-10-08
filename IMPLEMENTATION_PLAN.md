@@ -68,6 +68,7 @@ This is not a good design for external end users because requiring them to get a
 
 1. Simple solution: remove workflow isolation from the `WorkflowRunner` entirely, or make it optional
 2. Complicated solution: Add workflow isolation directly to FaaSr-Backend
+   - If the user wants an event-driven workflow that triggers when an object is uploaded to a certain bucket, then they would need to include a function in their workflow to pull the object and save it in the isolated workflow folder.
 
 ### Access to Workflow Data and `FaaSrPayload` Instance
 
@@ -82,6 +83,25 @@ To maintain this behavior, the invoker called by the FAASR-INVOKE action could d
 
 1. Separate workflow data and invocation into different functions outside of `main`, allowing `WorkflowRunner` to use its own invocation logic.
 2. Write the invoker as a class (like `WorkflowMigrationAdapter`) that the `WorkflowRunner` could then override or use.
+
+## Implementation with Existing Package Code
+
+It may be ideal to use the `testing` directory for the testing utils and move actual tests out of the package directory.
+
+```plaintext
+FaaSr_py/
+└── testing/
+    ├── __init__.py
+    ├── utils/
+    │   ├── __init__.py
+    │   ├── exceptions.py
+    │   ├── enums.py
+    │   ├── utils.py
+    ├── function_logger.py
+    ├── function_monitor.py
+    ├── workflow_runner.py
+    └── workflow_tester.py
+```
 
 ### Files and Interfaces
 
@@ -199,14 +219,17 @@ user-repo/
 │   ├── process.py
 │   └── validate.py
 ├── workflow.json               # User-defined workflow
-└── tests/                      # User-defined test suite with pytest
-    ├── __init__.py
-    └── integration_tests.py
+├── tests/                      # User-defined test suite with pytest
+│   ├── __init__.py
+│   └── test_integration.py
+└── run_workflow.py             # Script for triggering the workflow locally
 ```
 
 The user will then import `WorkflowTester` to run tests against their workflow:
 
 ```python
+# test_integration.py
+
 import pytest
 
 from FaaSr_py.testing import WorkflowTester
@@ -238,6 +261,11 @@ def test_validate(tester: WorkflowTester):
 A user may want to use the `WorkflowRunner` directly for use cases outside of pytest. For example:
 
 ```python
+# run_workflow.py
+
+from FaaSr_py.testing import WorkflowRunner
+
+
 runner = WorkflowRunner(
     workflow_file_path="workflow.json",
     timeout=120,
@@ -277,6 +305,16 @@ while not runner.monitoring_complete:
 
     previous_statuses = current_statuses.copy()
 ```
+
+## Features to Add
+
+### Performance Monitoring
+
+It would be helpful to allow end users to monitor the performance of their workflows. A separate `PerformanceMonitor` could take advantage of the logs collected by `FunctionLogger` to capture performance metrics.
+
+### Sync/Async Invocation
+
+Currently `WorkflowRunner` runs in a separate thread to allow for parallel monitoring of function statuses. However, it may be advantageous to make `trigger_workflow` synchronous and instead have a separate `trigger_workflow_async` function. This would be suitable for use cases where the end user just wants to run their workflow and stream logs from a local machine and doesn't need additional monitoring logic.
 
 ## Pip Optional Dependencies
 
@@ -318,23 +356,4 @@ dependencies = ["..."]
 
 [project.optional-dependencies]
 testing = ["pytest>=7.4.0"]
-```
-
-## Implementation with Existing Package Code
-
-It may be ideal to use the `testing` directory for the testing utils and move actual tests out of the package directory.
-
-```plaintext
-FaaSr_py/
-└── testing/
-    ├── __init__.py
-    ├── utils/
-    │   ├── __init__.py
-    │   ├── exceptions.py
-    │   ├── enums.py
-    │   ├── utils.py
-    ├── function_logger.py
-    ├── function_monitor.py
-    ├── workflow_runner.py
-    └── workflow_tester.py
 ```
