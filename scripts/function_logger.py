@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from botocore.exceptions import ClientError
+from scripts.s3_client import WorkflowS3Client
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
@@ -11,15 +11,9 @@ import logging
 import re
 import threading
 import time
-from enum import Enum
 
 from scripts.utils import extract_function_name, get_s3_path
-
-
-class InvocationStatus(Enum):
-    PENDING = "pending"
-    INVOKED = "invoked"
-    NOT_INVOKED = "not_invoked"
+from scripts.utils.enums import InvocationStatus
 
 
 class FunctionLogger:
@@ -35,7 +29,7 @@ class FunctionLogger:
         workflow_name: str,
         invocation_folder: str,
         bucket_name: str,
-        s3_client: S3Client,
+        s3_client: WorkflowS3Client,
         stream_logs: bool = False,
         interval_seconds: int = 3,
     ):
@@ -261,27 +255,39 @@ class FunctionLogger:
         If `stream_logs` is True, this will also log the logs to the console.
         """
         while not self.logs_complete:
-            log_content = self._get_from_s3()
-            num_existing_logs = len(self.logs)
-            new_logs = log_content[num_existing_logs:]
+            if not self.logs_started:
+                if self._check_for_logs():
+                    self._set_logs_started()
+            else:
+                log_content = self._get_logs()
+                num_existing_logs = len(self.logs)
+                new_logs = log_content[num_existing_logs:]
 
-            self._update_logs(new_logs)
+                self._update_logs(new_logs)
 
-            if self.stream_logs:
-                for log in new_logs:
-                    self.logger.info(log)
+                if self.stream_logs:
+                    for log in new_logs:
+                        self.logger.info(log)
 
-            if self._check_for_failure():
-                self._set_function_failed()
-                self._set_logs_complete()
-            elif not self.function_complete and self._check_for_done():
-                self._set_function_complete()
-            elif self.function_complete and not new_logs:
-                self._set_logs_complete()
+                if self._check_for_failure():
+                    self._set_function_failed()
+                    self._set_logs_complete()
+                elif not self.function_complete and self._check_for_done():
+                    self._set_function_complete()
+                elif self.function_complete and not new_logs:
+                    self._set_logs_complete()
+
+            self._call_callbacks()
 
             time.sleep(self.interval_seconds)
 
         self._set_invocations()
+
+    def _check_for_logs(self) -> bool:
+        """
+        Check if the logs exist on S3.
+        """
+        return self.s3_client.object_exists(self.key)
 
     def _check_for_done(self) -> bool:
         """
@@ -293,24 +299,16 @@ class FunctionLogger:
         Raises:
             ClientError: If an unexpected error occurs.
         """
-        try:
-            self.s3_client.head_object(Bucket=self.bucket_name, Key=self.done_key)
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "404":
-                return False
-            else:
-                raise e
-        return True
+        return self.s3_client.object_exists(self.done_key)
 
-    def _get_from_s3(self) -> list[str]:
+    def _get_logs(self) -> list[str]:
         """
         Get the logs from S3.
 
         Returns:
             list[str]: The logs.
         """
-        log_content = self.s3_client.get_object(Bucket=self.bucket_name, Key=self.key)
-        return log_content["Body"].read().decode("utf-8").strip().split("\n")
+        return self.s3_client.get_object(self.key).strip().split("\n")
 
     def _check_for_failure(self) -> bool:
         """
