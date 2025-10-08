@@ -17,16 +17,25 @@ import uuid
 from collections import defaultdict
 from contextlib import suppress
 from datetime import UTC, datetime
-from enum import Enum
 
 import boto3
 from botocore.exceptions import ClientError
 from FaaSr_py.helpers.graph_functions import build_adjacency_graph
 from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 
-from scripts.function_logger import FunctionLogger, InvocationStatus
+from scripts.function_logger import FunctionLogger
 from scripts.invoke_workflow import WorkflowMigrationAdapter
-from scripts.utils import extract_function_name, get_s3_path
+from scripts.utils import (
+    extract_function_name,
+    get_s3_path,
+    has_completed,
+    has_final_state,
+    has_run,
+    invoked,
+    pending,
+    running,
+)
+from scripts.utils.enums import FunctionStatus, InvocationStatus
 
 REQUIRED_ENV_VARS = [
     "MY_S3_BUCKET_ACCESSKEY",
@@ -49,69 +58,6 @@ class InitializationError(Exception):
 
 class StopMonitoring(Exception):
     """Exception raised to stop WorkflowRunner monitoring"""
-
-
-class FunctionStatus(Enum):
-    """Function execution status"""
-
-    PENDING = "pending"
-    INVOKED = "invoked"
-    NOT_INVOKED = "not_invoked"
-    RUNNING = "running"
-    COMPLETED = "completed"
-    FAILED = "failed"
-    SKIPPED = "skipped"
-    TIMEOUT = "timeout"
-
-
-def pending(status: FunctionStatus) -> bool:
-    return status == FunctionStatus.PENDING
-
-
-def invoked(status: FunctionStatus) -> bool:
-    return status == FunctionStatus.INVOKED
-
-
-def not_invoked(status: FunctionStatus) -> bool:
-    return status == FunctionStatus.NOT_INVOKED
-
-
-def running(status: FunctionStatus) -> bool:
-    return status == FunctionStatus.RUNNING
-
-
-def completed(status: FunctionStatus) -> bool:
-    return status == FunctionStatus.COMPLETED
-
-
-def failed(status: FunctionStatus) -> bool:
-    return status == FunctionStatus.FAILED
-
-
-def skipped(status: FunctionStatus) -> bool:
-    return status == FunctionStatus.SKIPPED
-
-
-def timed_out(status: FunctionStatus) -> bool:
-    return status == FunctionStatus.TIMEOUT
-
-
-def has_run(status: FunctionStatus) -> bool:
-    return not (pending(status) or invoked(status) or not_invoked(status))
-
-
-def has_completed(status: FunctionStatus) -> bool:
-    return completed(status) or not_invoked(status)
-
-
-def has_final_state(status: FunctionStatus) -> bool:
-    return (
-        completed(status)
-        or not_invoked(status)
-        or failed(status)
-        or timed_out(status)
-        or skipped(status)
-    )
 
 
 class WorkflowRunner(WorkflowMigrationAdapter):
@@ -260,8 +206,8 @@ class WorkflowRunner(WorkflowMigrationAdapter):
         """
         reverse_adj_graph = defaultdict(set)
         for invoker, invoked_functions in self.adj_graph.items():
-            for invoked in invoked_functions:
-                reverse_adj_graph[invoked].add(invoker)
+            for function in invoked_functions:
+                reverse_adj_graph[function].add(invoker)
         return reverse_adj_graph
 
     def _build_function_statuses(self) -> dict[str, FunctionStatus]:
