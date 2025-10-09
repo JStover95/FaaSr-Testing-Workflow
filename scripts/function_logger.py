@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING
 
-from scripts.s3_client import WorkflowS3Client
+from scripts.s3_client import FaaSrS3Client
 
 if TYPE_CHECKING:
     from mypy_boto3_s3 import S3Client
@@ -29,7 +29,7 @@ class FunctionLogger:
         workflow_name: str,
         invocation_folder: str,
         bucket_name: str,
-        s3_client: WorkflowS3Client,
+        s3_client: FaaSrS3Client,
         stream_logs: bool = False,
         interval_seconds: int = 3,
     ):

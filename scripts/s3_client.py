@@ -26,7 +26,7 @@ class S3ClientError(Exception):
         return f"S3 client error: {self.message}"
 
 
-class WorkflowS3Client:
+class FaaSrS3Client:
     def __init__(
         self,
         *,
