@@ -337,6 +337,9 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
             self._cascade_failure()
             raise StopMonitoring("Failure detected")
 
+    ######################
+    # Monitoring helpers #
+    ######################
     def _handle_pending(self, function: FaaSrFunction) -> None:
         """
         Handle a pending function.
@@ -416,9 +419,9 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
                     f"Skipping function {function.function_name} on failure"
                 )
 
-    ######################
-    # Monitoring helpers #
-    ######################
+    ###################
+    # Timeout helpers #
+    ###################
     def _reset_timer(self) -> None:
         """Reset the monitoring timer."""
         self.last_change_time = time.time()
