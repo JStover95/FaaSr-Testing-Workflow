@@ -1,22 +1,22 @@
 {
   "ActionList": {
-    "TestNotRanked": {
+    "test-not-ranked": {
       "Arguments": {
         "folder": "integration-tests"
       },
-      "InvokeNext": ["TestRanked(2)"],
+      "InvokeNext": ["test-ranked(2)"],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
-      "FunctionName": "TestNotRanked"
+      "FunctionName": "test_not_ranked"
     },
-    "TestRanked": {
+    "test-ranked": {
       "Arguments": {
         "folder": "integration-tests"
       },
       "InvokeNext": [],
       "FaaSServer": "My_GitHub_Account",
       "Type": "Python",
-      "FunctionName": "TestRanked"
+      "FunctionName": "test_ranked"
     }
   },
   "ComputeServers": {
@@ -36,14 +36,14 @@
     }
   },
   "ActionContainers": {
-    "TestNotRanked": "ghcr.io/faasr/github-actions-python:dev",
-    "TestRanked": "ghcr.io/faasr/github-actions-python:dev"
+    "test-not-ranked": "ghcr.io/faasr/github-actions-python:dev",
+    "test-ranked": "ghcr.io/faasr/github-actions-python:dev"
   },
-  "FunctionInvoke": "TestNotRanked",
+  "FunctionInvoke": "test-not-ranked",
   "DefaultDataStore": "My_S3_Bucket",
   "FunctionGitRepo": {
-    "TestNotRanked": "JStover95/FaaSr-Testing-Functions/functions",
-    "TestRanked": "JStover95/FaaSr-Testing-Functions/functions"
+    "test_not_ranked": "JStover95/FaaSr-Testing-Functions/functions",
+    "test_ranked": "JStover95/FaaSr-Testing-Functions/functions"
   },
   "LoggingDataStore": "My_S3_Bucket",
   "FaaSrLog": "FaaSrLog",
