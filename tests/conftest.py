@@ -8,10 +8,8 @@ from dotenv import load_dotenv
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scripts.workflow_runner import (
-    FunctionStatus,
-    WorkflowRunner,
-)
+from scripts.faasr_workflow import FaaSrWorkflow
+from scripts.utils.enums import FunctionStatus
 
 load_dotenv()
 
@@ -21,16 +19,12 @@ CHECK_INTERVAL = 1
 
 class WorkflowTester:
     def __init__(self, workflow_file_path: str):
-        self.runner = WorkflowRunner(
+        self.runner = FaaSrWorkflow(
             workflow_file_path=workflow_file_path,
             timeout=TIMEOUT,
             check_interval=CHECK_INTERVAL,
             stream_logs=True,
         )
-
-    @property
-    def bucket_name(self):
-        return self.runner.bucket_name
 
     @property
     def s3_client(self):
@@ -92,17 +86,16 @@ class WorkflowTester:
 
     def assert_object_exists(self, object_name: str):
         key = self.get_s3_key(object_name)
-        assert self.s3_client.head_object(Bucket=self.bucket_name, Key=key) is not None
+        assert self.s3_client.object_exists(key)
 
     def assert_object_does_not_exist(self, object_name: str):
         key = self.get_s3_key(object_name)
         with pytest.raises(ClientError):
-            self.s3_client.head_object(Bucket=self.bucket_name, Key=key)
+            self.s3_client.object_exists(key)
 
     def assert_content_equals(self, object_name: str, expected_content: str):
         key = self.get_s3_key(object_name)
-        content = self.s3_client.get_object(Bucket=self.bucket_name, Key=key)
-        assert content["Body"].read().decode("utf-8") == expected_content
+        assert self.s3_client.get_object(key) == expected_content
 
     def assert_function_completed(self, function_name: str):
         assert (
