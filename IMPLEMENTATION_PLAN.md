@@ -2,6 +2,142 @@
 
 This document outlines a possible implementation of the FaaSr Integration Testing Framework into the existing FaaSr-Backend package.
 
+## Implementation with Existing Package Code
+
+It may be ideal to use the `testing` directory for the testing utils and move actual tests out of the package directory.
+
+```plaintext
+FaaSr_py/
+└── testing/
+    ├── __init__.py
+    ├── utils/
+    │   ├── __init__.py
+    │   ├── exceptions.py
+    │   ├── enums.py
+    │   ├── utils.py
+    ├── faasr_function.py
+    ├── faasr_function_logger.py
+    ├── faasr_s3_client.py              # Currently `scripts/s3_client.py`
+    ├── faasr_workflow.py
+    └── faasr_workflow_tester.py        # Currently in `tests/conftest.py`
+```
+
+### Files and Interfaces
+
+#### `exceptions.py`
+
+Includes custom exceptions:
+
+- `S3ClientInitializationError`
+- `S3ClientError`
+- `InitializationError`
+- `StopMonitoring`
+
+#### `enums.py`
+
+Includes enums for the testing framework:
+
+- `FunctionStatus`
+- `InvocationStatus`
+- `LogEvent`
+
+#### `utils.py`
+
+Includes miscellaneous utility functions for the testing framework.
+
+- Status flags
+  - `pending(status: FunctionStatus) -> bool`
+  - `invoked(status: FunctionStatus) -> bool`
+  - `not_invoked(status: FunctionStatus) -> bool`
+  - `running(status: FunctionStatus) -> bool`
+  - `completed(status: FunctionStatus) -> bool`
+  - `failed(status: FunctionStatus) -> bool`
+  - `skipped(status: FunctionStatus) -> bool`
+  - `timed_out(status: FunctionStatus) -> bool`
+  - `has_run(status: FunctionStatus) -> bool`
+  - `has_completed(status: FunctionStatus) -> bool`
+  - `has_final_state(status: FunctionStatus) -> bool`
+- `extract_function_name(function_name: str) -> str`
+- `get_s3_path(key: str) -> str`
+
+#### `faasr_s3_client.py`
+
+Includes the `FaaSrS3Client` class. This abstracts operations for S3 workflow outputs.
+
+**Methods:**
+
+- `object_exists(self, key: str) -> bool:`
+- `get_object(self, key: str, encoding: str = "utf-8") -> str:`
+
+#### `faasr_function_logger.py`
+
+Includes the `FaaSrFunctionLogger` class. This handles pulling logs from S3.
+
+**Properties:**
+
+- `logs: list[str]`
+- `logs_content: str`
+- `logs_key: str`
+- `logs_started: bool`
+- `logs_complete: bool`
+- `stop_requested: bool`
+
+**Methods:**
+
+- `start() -> None`
+- `stop() -> None`
+- `register_callback(self, callback: Callable[[LogEvent], None]) -> None`
+
+#### `faasr_function.py`
+
+Includes the `FaaSrFunction` class. This manages the execution status and monitoring of a single FaaSr function.
+
+**Properties:**
+
+- `status: FunctionStatus`
+- `done_key: str`
+- `invocations: set[str] | None`
+
+**Methods:**
+
+- `set_status(self, status: FunctionStatus) -> None`
+- `start(self) -> None`
+
+#### `faasr_workflow.py`
+
+Includes the `FaaSrWorkflow` class. This orchestrates workflow execution and monitoring of workflows.
+
+**Properties:**
+
+- `monitoring_complete: bool`
+- `shutdown_requested: bool`
+
+**Methods:**
+
+- `get_function_statuses(self) -> dict[str, FunctionStatus]`
+- `trigger_workflow(self) -> None`
+- `shutdown(self, timeout: float = None) -> bool`
+- `force_shutdown(self) -> None`
+- `cleanup(self) -> None`
+
+#### `faasr_workflow_tester.py`
+
+Includes the `FaaSrWorkflowTester` class. This includes utilities for running tests against a workflow based only on S3 outputs.
+
+**Properties:**
+
+- `s3_client: S3Client`
+
+**Methods:**
+
+- `get_s3_key(file_name: str) -> str`
+- `wait_for(function_name) -> str`
+- `assert_object_exists(object_name: str) -> None`
+- `assert_object_does_not_exist(object_name: str) -> None`
+- `assert_content_equals(object_name: str, expected_content: str) -> None`
+- `assert_function_completed(function_name: str) -> None`
+- `assert_function_not_invoked(function_name: str) -> None`
+
 ## Key Assumptions & Questions
 
 The workflow runner makes a few key assumptions:
@@ -66,13 +202,13 @@ def create_input(folder: str, input1: str) -> None:
 
 This is not a good design for external end users because requiring them to get an invocation ID for each function adds unnecessary complexity. Instead we could:
 
-1. Simple solution: remove workflow isolation from the `WorkflowRunner` entirely, or make it optional
+1. Simple solution: remove workflow isolation from `FaaSrWorkflow` entirely, or make it optional
 2. Complicated solution: Add workflow isolation directly to FaaSr-Backend
    - If the user wants an event-driven workflow that triggers when an object is uploaded to a certain bucket, then they would need to include a function in their workflow to pull the object and save it in the isolated workflow folder.
 
 ### Access to Workflow Data and `FaaSrPayload` Instance
 
-`WorkflowRunner` currently uses the `workflow_data` and `faasr_payload` attributes of the deprecated `WorkflowMigrationAdapter` for the following:
+`FaaSrWorkflow` currently uses the `workflow_data` and `faasr_payload` attributes of the deprecated `WorkflowMigrationAdapter` for the following:
 
 - Getting the invocation folder with `get_invocation_folder`
 - Setting `InvocationID` and `InvocationTimestamp`
@@ -81,129 +217,8 @@ This is not a good design for external end users because requiring them to get a
 
 To maintain this behavior, the invoker called by the FAASR-INVOKE action could do one of the following:
 
-1. Separate workflow data and invocation into different functions outside of `main`, allowing `WorkflowRunner` to use its own invocation logic.
-2. Write the invoker as a class (like `WorkflowMigrationAdapter`) that the `WorkflowRunner` could then override or use.
-
-## Implementation with Existing Package Code
-
-It may be ideal to use the `testing` directory for the testing utils and move actual tests out of the package directory.
-
-```plaintext
-FaaSr_py/
-└── testing/
-    ├── __init__.py
-    ├── utils/
-    │   ├── __init__.py
-    │   ├── exceptions.py
-    │   ├── enums.py
-    │   ├── utils.py
-    ├── function_logger.py
-    ├── function_monitor.py
-    ├── workflow_runner.py
-    └── workflow_tester.py
-```
-
-### Files and Interfaces
-
-#### `exceptions.py`
-
-Includes custom exceptions:
-
-- `InitializationError`
-- `StopMonitoring`
-
-#### `enums.py`
-
-Includes enums for the testing framework:
-
-- `FunctionStatus`
-- `InvocationStatus`
-
-#### `utils.py`
-
-Includes miscellaneous utility functions for the testing framework.
-
-- Status flags
-  - `pending`
-  - `invoked`
-  - `not_invoked`
-  - `running`
-  - `completed`
-  - `failed`
-  - `skipped`
-  - `timed_out`
-  - `has_run`
-  - `has_completed`
-  - `has_final_state`
-- `extract_function_name`
-- `get_s3_path`
-
-#### `function_logger.py`
-
-Includes the `FunctionLogger` class. This pulls the logs of a single function from S3.
-
-**Properties:**
-
-- `logs: list[str]`
-- `logs_content: str`
-- `logs_complete: bool`
-- `logs_key: str`
-
-**Methods:**
-
-- `start() -> None`
-
-#### `function_monitor.py`
-
-Includes the `FunctionMonitor` class. This monitors S3 for the status of a single function.
-
-**Properties:**
-
-- `function_complete: bool`
-- `function_failed: bool`
-- `invocations: set[str] | None`
-- `done_key: str`
-
-**Methods:**
-
-- `get_invocation_status(function_name: str) -> InvocationStatus`
-- `start() -> None`
-
-#### `workflow_runner.py`
-
-Includes the `WorkflowRunner` class. This runs a workflow and monitors the statuses of all functions.
-
-**Properties:**
-
-- `monitoring_complete: bool`
-- `shutdown_requested: bool`
-
-**Methods:**
-
-- `get_function_statuses() -> dict[str, FunctionStatus]`
-- `shutdown(timeout: float | None = None) -> bool`
-- `force_shutdown() -> None`
-- `cleanup() -> None`
-- `trigger_workflow() -> None`
-
-#### `workflow_tester.py`
-
-Includes the `WorkflowTester` class. This includes utilities for running tests against a workflow based only on S3 outputs.
-
-**Properties:**
-
-- `bucket_name: str`
-- `s3_client: S3Client`
-
-**Methods:**
-
-- `get_s3_key(file_name: str) -> str`
-- `wait_for(function_name) -> str`
-- `assert_object_exists(object_name: str) -> None`
-- `assert_object_does_not_exist(object_name: str) -> None`
-- `assert_content_equals(object_name: str, expected_content: str) -> None`
-- `assert_function_completed(function_name: str) -> None`
-- `assert_function_not_invoked(function_name: str) -> None`
+1. Separate workflow data and invocation into different functions outside of `main`, allowing `FaaSrWorkflow` to use its own invocation logic.
+2. Write the invoker as a class (like `WorkflowMigrationAdapter`) that the `FaaSrWorkflow` could then override or use.
 
 ## Example Usage
 
@@ -225,7 +240,7 @@ user-repo/
 └── run_workflow.py             # Script for triggering the workflow locally
 ```
 
-The user will then import `WorkflowTester` to run tests against their workflow:
+The user will then import `FaaSrWorkflowTester` to run tests against their workflow:
 
 ```python
 # test_integration.py
@@ -256,17 +271,17 @@ def test_validate(tester: WorkflowTester):
     ...
 ```
 
-### Using `WorkflowRunner` Directly
+### Using `FaaSrWorkflow` Directly
 
-A user may want to use the `WorkflowRunner` directly for use cases outside of pytest. For example:
+A user may want to use the `FaaSrWorkflow` directly for use cases outside of pytest. For example:
 
 ```python
 # run_workflow.py
 
-from FaaSr_py.testing import WorkflowRunner
+from FaaSr_py.testing import FaaSrWorkflow
 
 
-runner = WorkflowRunner(
+runner = FaaSrWorkflow(
     workflow_file_path="workflow.json",
     timeout=120,
     check_interval=1,
@@ -310,11 +325,11 @@ while not runner.monitoring_complete:
 
 ### Performance Monitoring
 
-It would be helpful to allow end users to monitor the performance of their workflows. A separate `PerformanceMonitor` could take advantage of the logs collected by `FunctionLogger` to capture performance metrics.
+It would be helpful to allow end users to monitor the performance of their workflows. A separate `FaaSrPerformanceMonitor` could take advantage of the logs collected by `FaaSrFunctionLogger` to capture performance metrics.
 
 ### Sync/Async Invocation
 
-Currently `WorkflowRunner` runs in a separate thread to allow for parallel monitoring of function statuses. However, it may be advantageous to make `trigger_workflow` synchronous and instead have a separate `trigger_workflow_async` function. This would be suitable for use cases where the end user just wants to run their workflow and stream logs from a local machine and doesn't need additional monitoring logic.
+Currently `FaaSrWorkflow` runs in a separate thread to allow for parallel monitoring of function statuses. However, it may be advantageous to make `trigger_workflow` synchronous and instead have a separate `trigger_workflow_async` function. This would be suitable for use cases where the end user just wants to run their workflow and stream logs from a local machine and doesn't need additional monitoring logic.
 
 ## Pip Optional Dependencies
 
