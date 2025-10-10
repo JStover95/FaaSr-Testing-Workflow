@@ -34,7 +34,6 @@ class FaaSrFunction:
         function_name: str,
         workflow_name: str,
         invocation_folder: str,
-        bucket_name: str,
         s3_client: FaaSrS3Client,
         stream_logs: bool = False,
         interval_seconds: int = 3,
@@ -42,7 +41,6 @@ class FaaSrFunction:
         self.function_name = function_name
         self.workflow_name = workflow_name
         self.invocation_folder = invocation_folder
-        self.bucket_name = bucket_name
         self.s3_client = s3_client
         self.stream_logs = stream_logs
         self.interval_seconds = interval_seconds
@@ -52,7 +50,6 @@ class FaaSrFunction:
             function_name=function_name,
             workflow_name=workflow_name,
             invocation_folder=invocation_folder,
-            bucket_name=bucket_name,
             s3_client=s3_client,
             stream_logs=stream_logs,
             interval_seconds=interval_seconds,
@@ -67,6 +64,7 @@ class FaaSrFunction:
 
         # Register callbacks with logger
         self._logger.register_callback(self._on_log_event)
+        self._logger.start()
 
     @property
     def status(self) -> FunctionStatus:
@@ -129,12 +127,13 @@ class FaaSrFunction:
         Args:
             event: The log event that occurred
         """
-        if event == LogEvent.LOG_CREATED:
-            self._handle_log_created()
-        elif event == LogEvent.LOG_UPDATED:
-            self._handle_log_updated()
-        elif event == LogEvent.LOG_COMPLETE:
-            self._handle_log_complete()
+        match event:
+            case LogEvent.LOG_CREATED:
+                self._handle_log_created()
+            case LogEvent.LOG_UPDATED:
+                self._handle_log_updated()
+            case LogEvent.LOG_COMPLETE:
+                self._handle_log_complete()
 
     def _handle_log_created(self) -> None:
         """Handle when logs are first created."""
@@ -146,9 +145,11 @@ class FaaSrFunction:
         # Check for failures
         if self._check_for_failure():
             self.set_status(FunctionStatus.FAILED)
+            self._logger.stop()
         # Check for completion
         elif self._check_for_completion():
             self.set_status(FunctionStatus.COMPLETED)
+            self._logger.stop()
 
     def _handle_log_complete(self) -> None:
         """Handle when logs are complete."""
