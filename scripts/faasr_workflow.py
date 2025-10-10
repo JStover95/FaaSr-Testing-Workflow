@@ -4,14 +4,12 @@ import signal
 import sys
 import threading
 import time
-import traceback
 import uuid
 from collections import defaultdict
-from contextlib import suppress
 from datetime import UTC, datetime
+from itertools import chain
 from typing import Any, Generator, Literal
 
-from botocore.exceptions import ClientError
 from FaaSr_py.helpers.graph_functions import build_adjacency_graph
 from FaaSr_py.helpers.s3_helper_functions import get_invocation_folder
 
@@ -19,12 +17,13 @@ from scripts.faasr_function import FaaSrFunction
 from scripts.invoke_workflow import WorkflowMigrationAdapter
 from scripts.s3_client import FaaSrS3Client
 from scripts.utils import (
+    completed,
     extract_function_name,
-    get_s3_path,
+    failed,
     has_completed,
     has_final_state,
-    has_run,
     invoked,
+    not_invoked,
     pending,
     running,
 )
@@ -71,7 +70,6 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         workflow_file_path: str,
         timeout: int,
         check_interval: int,
-        s3_client: FaaSrS3Client,
         stream_logs: bool = False,
     ):
         super().__init__(workflow_file_path)
@@ -81,13 +79,6 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         # Setup logging
         self.timestamp = datetime.now(UTC).strftime("%Y-%m-%d_%H-%M-%S")
         self.logger = self._setup_logger()
-
-        # Initialize S3 client for monitoring
-        self.s3_client = s3_client
-
-        # Initialize function instances
-        self.functions: dict[str, FaaSrFunction] = {}
-        self.stream_logs = stream_logs
 
         # Monitoring parameters
         self.timeout = timeout
@@ -110,7 +101,16 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         self.workflow_name = self.workflow_data.get("WorkflowName")
         self.workflow_invoke = self.workflow_data.get("FunctionInvoke")
         self.function_names = self.workflow_data["ActionList"].keys()
-        self._function_statuses = self._build_function_statuses()
+        self._stream_logs = stream_logs
+        self._functions: dict[str, FaaSrFunction] = {}
+        self._prev_statuses: dict[str, FunctionStatus] = {}
+
+        # Initialize S3 client for monitoring
+        self.s3_client = FaaSrS3Client(
+            workflow_data=self.workflow_data,
+            access_key=os.getenv("MY_S3_BUCKET_ACCESSKEY"),
+            secret_key=os.getenv("MY_S3_BUCKET_SECRETKEY"),
+        )
 
         # Setup signal handlers for graceful shutdown
         self._setup_signal_handlers()
@@ -169,15 +169,15 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
                 reverse_adj_graph[function].add(invoker)
         return reverse_adj_graph
 
-    def _build_function_statuses(self) -> dict[str, FunctionStatus]:
+    def _build_functions(self, stream_logs: bool) -> list[FaaSrFunction]:
         """
         Initialize the function statuses:
 
         ```py
         {
-            "function_name": "status",
-            "ranked_function(1)": "status",
-            "ranked_function(2)": "status",
+            "function_name": FaaSrFunction,
+            "ranked_function(1)": FaaSrFunction,
+            "ranked_function(2)": FaaSrFunction,
             ...
         }
         ```
@@ -187,21 +187,21 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         - Ranked functions include the rank in the function name.
 
         Returns:
-            dict[str, FunctionStatus]: The function statuses.
+            list[FaaSrFunction]: The function instances.
         """
-        statuses = {}
-        for function_name in self.function_names:
-            if function_name == self.workflow_invoke and self.ranks[function_name] <= 1:
-                statuses[function_name] = FunctionStatus.INVOKED
-            elif function_name == self.workflow_invoke:
-                for rank in self._iter_ranks(function_name):
-                    statuses[rank] = FunctionStatus.INVOKED
-            elif self.ranks[function_name] <= 1:
-                statuses[function_name] = FunctionStatus.PENDING
-            else:
-                for rank in self._iter_ranks(function_name):
-                    statuses[rank] = FunctionStatus.PENDING
-        return statuses
+        functions: dict[str, FaaSrFunction] = {}
+        for rank in chain(*(self._iter_ranks(name) for name in self.function_names)):
+            function = FaaSrFunction(
+                function_name=rank,
+                workflow_name=self.workflow_name,
+                invocation_folder=get_invocation_folder(self.faasr_payload),
+                s3_client=self.s3_client,
+                stream_logs=stream_logs,
+            )
+            if extract_function_name(rank) == self.workflow_invoke:
+                function.set_status(FunctionStatus.INVOKED)
+            functions[rank] = function
+        return functions
 
     def _setup_signal_handlers(self) -> None:
         """
@@ -235,7 +235,10 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
             dict[str, FunctionStatus]: A copy of the function statuses.
         """
         with self._status_lock:
-            return self._function_statuses.copy()
+            return {
+                function.function_name: function.status
+                for function in self._functions.values()
+            }
 
     @property
     def monitoring_complete(self) -> bool:
@@ -269,17 +272,6 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         with self._status_lock:
             self._shutdown_requested = True
 
-    def _set_status(self, function_name: str, status: FunctionStatus) -> None:
-        """
-        Set the status of a function (thread-safe).
-
-        Args:
-            function_name: The name of the function to set the status of.
-            status: The status to set the function to.
-        """
-        with self._status_lock:
-            self._function_statuses[function_name] = status
-
     #######################
     # Workflow monitoring #
     #######################
@@ -295,7 +287,7 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         - Calls `_finish_monitoring` when the monitoring is complete.
         """
         self.logger.info(
-            f"Monitoring workflow execution for functions: {', '.join(self.get_function_statuses().keys())}"
+            f"Monitoring workflow execution for functions: {', '.join(self.function_names)}"
         )
 
         self._reset_timer()
@@ -323,33 +315,65 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         Raises:
             StopMonitoring: If all functions have successfully completed or a failure has been detected.
         """
-        failed = False
+        workflow_failed = False
 
         # Check completion status for each function
-        for function_name, status in self.get_function_statuses().items():
-            if has_run(status) and function_name not in self.functions:
-                self._start_function_instance(function_name)
+        for function in self._functions.values():
+            if pending(function.status):
+                self._handle_pending(function)
+            if self._prev_statuses[function.function_name] != function.status:
+                self._log_status_change(function)
+                self._prev_statuses[function.function_name] = function.status
+            if failed(function.status):
+                workflow_failed = True
+                break
 
-            if pending(status):
-                self._handle_pending(function_name)
-            elif invoked(status) and self._check_function_running(function_name):
-                self._handle_invoked(function_name)
-            elif running(status) and self._check_function_failed(function_name):
-                self._handle_failed(function_name)
-                failed = True
-            elif running(status) and self._check_function_completed(function_name):
-                self._handle_completed(function_name)
-
-        if all(
-            has_completed(status) for status in self.get_function_statuses().values()
-        ):
+        if self._all_functions_completed():
             self.logger.info("All functions completed")
             raise StopMonitoring("All functions completed")
 
         # Cascade failed status to all pending functions
-        if failed:
+        if workflow_failed:
             self._cascade_failure()
             raise StopMonitoring("Failure detected")
+
+    def _handle_pending(self, function: FaaSrFunction) -> None:
+        """
+        Handle a pending function.
+
+        This sets the function status to `INVOKED` if the function was invoked,
+        and `NOT_INVOKED` if the function was not invoked.
+
+        Args:
+            function_name: The name of the function to handle.
+        """
+        invocation_status = self._check_invocation_status(function)
+        if invocation_status == InvocationStatus.INVOKED:
+            self._reset_timer()
+            function.set_status(FunctionStatus.INVOKED)
+        elif invocation_status == InvocationStatus.NOT_INVOKED:
+            self._reset_timer()
+            function.set_status(FunctionStatus.NOT_INVOKED)
+
+    def _log_status_change(self, function: FaaSrFunction) -> None:
+        if failed(function.status):
+            self.logger.info(f"Function {function.function_name} failed")
+        elif not_invoked(function.status):
+            self.logger.info(f"Function {function.function_name} not invoked")
+        elif invoked(function.status):
+            self.logger.info(f"Function {function.function_name} invoked")
+        elif running(function.status):
+            self.logger.info(f"Function {function.function_name} running")
+        elif completed(function.status):
+            self.logger.info(f"Function {function.function_name} completed")
+
+    def _all_functions_completed(self) -> bool:
+        """
+        Check if all functions have completed.
+        """
+        return all(
+            has_completed(function.status) for function in self._functions.values()
+        )
 
     def _finish_monitoring(self) -> None:
         """
@@ -361,18 +385,36 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         - Marks the monitoring as complete.
         """
         # Check for timeouts or shutdown
-        for function_name, status in self.get_function_statuses().items():
-            if not has_final_state(status) and self.shutdown_requested:
-                self._set_status(function_name, FunctionStatus.SKIPPED)
-                self.logger.info(f"Function {function_name} skipped due to shutdown")
-            elif not has_final_state(status):
-                self._set_status(function_name, FunctionStatus.TIMEOUT)
-                self.logger.warning(f"Function {function_name} timed out")
+        for function in self._functions.values():
+            if not has_final_state(function.status) and self.shutdown_requested:
+                function.set_status(FunctionStatus.SKIPPED)
+                self.logger.info(
+                    f"Function {function.function_name} skipped due to shutdown"
+                )
+            elif not has_final_state(function.status):
+                function.set_status(FunctionStatus.TIMEOUT)
+                self.logger.warning(f"Function {function.function_name} timed out")
 
         # Mark monitoring as complete
         self._set_monitoring_complete()
 
         self.logger.info("Monitoring complete")
+
+    def _cascade_failure(self) -> None:
+        """
+        Cascade a failure to all not completed functions.
+
+        This sets the function status to `SKIPPED`.
+
+        Args:
+            function: The function to handle.
+        """
+        for function in self._functions.values():
+            if not has_completed(function.status):
+                function.set_status(FunctionStatus.SKIPPED)
+                self.logger.info(
+                    f"Skipping function {function.function_name} on failure"
+                )
 
     ######################
     # Monitoring helpers #
@@ -394,149 +436,6 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
             bool: True if the monitoring timer has timed out, False otherwise.
         """
         return self.seconds_since_last_change >= self.timeout
-
-    def _start_function_instance(self, function_name: str) -> None:
-        """
-        Start a function's instance and register it with the FaaSrWorkflow.
-
-        Args:
-            function_name: The name of the function to start the instance for.
-        """
-        function_instance = FaaSrFunction(
-            function_name=function_name,
-            workflow_name=self.workflow_name,
-            invocation_folder=get_invocation_folder(self.faasr_payload),
-            bucket_name=self.bucket_name,
-            s3_client=self.s3_client,
-            stream_logs=self.stream_logs,
-        )
-        function_instance.start()
-        self.functions[function_name] = function_instance
-        self.logger.info(f"Started function instance for {function_name}")
-
-    def _handle_pending(self, function_name: str) -> None:
-        """
-        Handle a pending function.
-
-        This sets the function status to `INVOKED` if the function was invoked,
-        and `NOT_INVOKED` if the function was not invoked.
-
-        Args:
-            function_name: The name of the function to handle.
-        """
-        invocation_status = self._check_invocation_status(function_name)
-        if invocation_status == InvocationStatus.INVOKED:
-            self._reset_timer()
-            self._set_status(function_name, FunctionStatus.INVOKED)
-            self.logger.info(f"Function {function_name} invoked")
-        elif invocation_status == InvocationStatus.NOT_INVOKED:
-            self._reset_timer()
-            self._set_status(function_name, FunctionStatus.NOT_INVOKED)
-            self.logger.info(f"Function {function_name} not invoked")
-
-    def _handle_invoked(self, function_name: str) -> None:
-        """
-        Handle an invoked function.
-
-        This sets the function status to `RUNNING`.
-
-        Args:
-            function_name: The name of the function to handle.
-        """
-        self._reset_timer()
-        self._set_status(function_name, FunctionStatus.RUNNING)
-        self.logger.info(f"Function {function_name} running")
-
-    def _handle_completed(self, function_name: str) -> None:
-        """
-        Handle a completed function.
-
-        This sets the function status to `COMPLETED`.
-
-        Args:
-            function_name: The name of the function to handle.
-        """
-        self._reset_timer()
-        self._set_status(function_name, FunctionStatus.COMPLETED)
-        self.logger.info(f"Function {function_name} completed")
-
-    def _handle_failed(self, function_name: str) -> None:
-        """
-        Handle a failed function.
-
-        This sets the function status to `FAILED`.
-
-        Args:
-            function_name: The name of the function to handle.
-        """
-        self._reset_timer()
-        self._set_status(function_name, FunctionStatus.FAILED)
-        self.logger.info(f"Function {function_name} failed")
-
-    def _cascade_failure(self) -> None:
-        """
-        Cascade a failure to all not completed functions.
-
-        This sets the function status to `SKIPPED`.
-
-        Args:
-            function_name: The name of the function to handle.
-        """
-        for function_name, status in self.get_function_statuses().items():
-            if not has_completed(status):
-                self._set_status(function_name, FunctionStatus.SKIPPED)
-                self.logger.info(f"Skipping function {function_name} on failure")
-
-    def _check_function_running(self, function_name: str) -> bool:
-        """
-        Check if a function is running. This returns True if a log file exists for the
-        function on S3.
-
-        Args:
-            function_name: The name of the function to check.
-
-        Returns:
-            bool: True if the function is running, False otherwise.
-        """
-        try:
-            invocation_folder = get_invocation_folder(self.faasr_payload)
-            key = get_s3_path(f"{invocation_folder}/{function_name}.txt")
-            return self._check_object_exists(key)
-
-        except Exception as e:
-            traceback.print_exc()
-            self.logger.error(f"Error checking running status for {function_name}: {e}")
-            return False
-
-    def _check_function_failed(self, function_name: str) -> bool:
-        """
-        Check if a function has failed. This uses the `FaaSrFunction` to check if the
-        function has failed.
-
-        Args:
-            function_name: The name of the function to check.
-
-        Returns:
-            bool: True if the function has failed, False otherwise.
-        """
-        with suppress(KeyError):
-            return self.functions[function_name].function_failed
-        return False
-
-    def _check_function_completed(self, function_name: str) -> bool:
-        """
-        Check if a function has completed. This uses the `FaaSrFunction` to check if
-        the function has completed.
-
-        Args:
-            function_name: The name of the function to check.
-
-        Returns:
-            bool: True if the function has completed, False otherwise.
-        """
-        with suppress(KeyError):
-            return self.functions[function_name].logs_complete
-        return False
 
     #####################
     # Thread management #
@@ -593,15 +492,6 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
             self.logger.warning("Graceful shutdown failed, forcing shutdown...")
             self.force_shutdown()
 
-        # Close S3 client if it exists
-        if self.s3_client:
-            try:
-                # boto3 clients don't need explicit closing, but we can clear the reference
-                self.s3_client = None
-                self.logger.info("S3 client cleaned up")
-            except Exception as e:
-                self.logger.error(f"Error cleaning up S3 client: {e}")
-
         self.logger.info("Cleanup completed")
 
     #############
@@ -618,6 +508,10 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
 
     def trigger_workflow(self) -> None:
         super().trigger_workflow()
+
+        # Build functions after trigger_workflow initializes FaaSrPayload
+        self._functions = self._build_functions(self._stream_logs)
+        self._prev_statuses = self.get_function_statuses()
 
         self.logger.info(
             f"Workflow {self.workflow_name} triggered with InvocationID: {self.faasr_payload['InvocationID']}"
@@ -643,32 +537,13 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         Yields:
             str: The rank of the function (e.g. "function(1)", "function(2)", etc.)
         """
-        for rank in range(1, self.ranks[function_name] + 1):
-            yield f"{function_name}({rank})"
+        if self.ranks[function_name] <= 1:
+            yield function_name
+        else:
+            for rank in range(1, self.ranks[function_name] + 1):
+                yield f"{function_name}({rank})"
 
-    def _check_object_exists(self, key: str) -> bool:
-        """
-        Check if an object exists in S3.
-
-        Args:
-            key: The key of the object to check.
-
-        Returns:
-            bool: True if the object exists, False otherwise.
-
-        Raises:
-            ClientError: If an unexpected error occurs.
-        """
-        try:
-            self.s3_client.head_object(Bucket=self.bucket_name, Key=str(key))
-        except ClientError as e:
-            if e.response["Error"]["Code"] == "404":
-                return False
-            else:
-                raise e
-        return True
-
-    def _check_invocation_status(self, function_name: str) -> InvocationStatus:
+    def _check_invocation_status(self, function: FaaSrFunction) -> InvocationStatus:
         """
         Check if a function was invoked. This uses the reverse adjacency graph to
         navigate each of a function's invokers.
@@ -683,21 +558,22 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
         Returns:
             InvocationStatus: The invocation status of the function.
         """
-        for invoker in self.reverse_adj_graph[extract_function_name(function_name)]:
-            if self.ranks[invoker] > 1:
-                for rank in self._iter_ranks(invoker):
-                    if status := self._get_invocation_status(rank, function_name):
-                        return status
-            else:
-                if status := self._get_invocation_status(invoker, function_name):
-                    return status
-
+        for rank in chain(
+            *(
+                self._iter_ranks(invoker)
+                for invoker in self.reverse_adj_graph[
+                    extract_function_name(function.function_name)
+                ]
+            )
+        ):
+            if status := self._get_invocation_status(self._functions[rank], function):
+                return status
         return InvocationStatus.NOT_INVOKED
 
     def _get_invocation_status(
         self,
-        invoker: str,
-        function_name: str,
+        invoker: FaaSrFunction,
+        function: FaaSrFunction,
     ) -> Literal[InvocationStatus.PENDING, InvocationStatus.INVOKED] | None:
         """
         Get the invocation status of a function from a given invoker. This uses the
@@ -705,26 +581,20 @@ class FaaSrWorkflow(WorkflowMigrationAdapter):
 
         Args:
             invoker: The name of the invoker to check.
-            function_name: The name of the function to check.
+            function: The function to check.
 
         Returns:
             InvocationStatus: `PENDING` or `INVOKED`.
             None: If the function was not invoked.
         """
-        try:
-            # Check if the invoker has completed and has invocations
-            if (
-                invoker in self.functions
-                and self.functions[invoker].invocations is not None
-            ):
-                invocations = self.functions[invoker].invocations
-                if extract_function_name(function_name) in invocations:
-                    return InvocationStatus.INVOKED
-                else:
-                    return InvocationStatus.NOT_INVOKED
+        # Check if the invoker has completed and has invocations
+        if invoker.invocations is not None:
+            invocations = invoker.invocations
+            if extract_function_name(function.function_name) in invocations:
+                return InvocationStatus.INVOKED
             else:
-                return InvocationStatus.PENDING
-        except KeyError:
+                return InvocationStatus.NOT_INVOKED
+        else:
             return InvocationStatus.PENDING
 
 
@@ -758,7 +628,7 @@ def main():
 
     # Monitor status changes
     print("\n📊 Monitoring function statuses...")
-    previous_statuses = {}
+    previous_statuses = {k: None for k in workflow.get_function_statuses()}
 
     while not workflow.monitoring_complete:
         # Get current statuses (thread-safe)
@@ -766,10 +636,7 @@ def main():
 
         # Check for changes
         for function_name, status in current_statuses.items():
-            if (
-                function_name not in previous_statuses
-                or previous_statuses[function_name] != status
-            ):
+            if previous_statuses[function_name] != status:
                 match status:
                     case FunctionStatus.PENDING:
                         print(f"⏳ {function_name}: {status.value}")
