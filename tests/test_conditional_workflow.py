@@ -10,20 +10,20 @@ def tester():
 
 
 def test_dont_run_on_true(tester: WorkflowTester):
-    tester.wait_for("dont_run_on_true")
-    tester.assert_function_not_invoked("dont_run_on_true")
+    tester.wait_for("dont-run-on-true")
+    tester.assert_function_not_invoked("dont-run-on-true")
 
 
 def test_dont_run_on_false(tester: WorkflowTester):
-    tester.wait_for("dont_run_on_false")
-    tester.assert_function_not_invoked("dont_run_on_false")
+    tester.wait_for("dont-run-on-false")
+    tester.assert_function_not_invoked("dont-run-on-false")
 
 
 def test_run_on_true(tester: WorkflowTester):
-    tester.wait_for("run_on_true")
-    tester.assert_function_completed("run_on_true")
+    tester.wait_for("run-on-true")
+    tester.assert_function_completed("run-on-true")
 
 
 def test_run_on_false(tester: WorkflowTester):
-    tester.wait_for("run_on_false")
-    tester.assert_function_completed("run_on_false")
+    tester.wait_for("run-on-false")
+    tester.assert_function_completed("run-on-false")
