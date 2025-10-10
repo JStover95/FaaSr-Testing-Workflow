@@ -163,12 +163,11 @@ class FaaSrFunctionLogger:
         Args:
             event: The log event that occurred
         """
-        with self._lock:
-            for callback in self._callbacks:
-                try:
-                    callback(event)
-                except Exception as e:
-                    self.logger.error(f"Error in callback: {e}")
+        for callback in self._callbacks:
+            try:
+                callback(event)
+            except Exception as e:
+                self.logger.error(f"Error in callback: {e}")
 
     def _update_logs(self, new_logs: list[str]) -> None:
         """
