@@ -33,7 +33,6 @@ class FaaSrFunctionLogger:
         function_name: str,
         workflow_name: str,
         invocation_folder: str,
-        bucket_name: str,
         s3_client: FaaSrS3Client,
         stream_logs: bool = False,
         interval_seconds: int = 3,
@@ -41,7 +40,6 @@ class FaaSrFunctionLogger:
         self.function_name = function_name
         self.workflow_name = workflow_name
         self.invocation_folder = invocation_folder
-        self.bucket_name = bucket_name
         self.s3_client = s3_client
         self.stream_logs = stream_logs
         self.interval_seconds = interval_seconds
@@ -60,6 +58,7 @@ class FaaSrFunctionLogger:
         # Thread management
         self._thread: threading.Thread | None = None
         self._lock = threading.Lock()
+        self._stop_requested = False
 
         # Event callbacks
         self._callbacks: list[Callable[[LogEvent], None]] = []
@@ -136,6 +135,17 @@ class FaaSrFunctionLogger:
         with self._lock:
             return self._logs_complete
 
+    @property
+    def stop_requested(self) -> bool:
+        """
+        Get the stop flag (thread-safe).
+
+        Returns:
+            bool: True if the logger should stop, False otherwise.
+        """
+        with self._lock:
+            return self._stop_requested
+
     def register_callback(self, callback: Callable[[LogEvent], None]) -> None:
         """
         Register a callback to be called when log events occur.
@@ -203,6 +213,11 @@ class FaaSrFunctionLogger:
         self._thread = threading.Thread(target=self._run, daemon=True)
         self._thread.start()
 
+    def stop(self) -> None:
+        """Stop the FaaSrFunctionLogger."""
+        with self._lock:
+            self._stop_requested = True
+
     def _run(self) -> None:
         """
         Run the main logging loop.
@@ -235,7 +250,7 @@ class FaaSrFunctionLogger:
                             self.logger.info(log)
 
                 # Check if logs are complete (no new logs after a cycle)
-                if not new_logs:
+                if self.stop_requested and not new_logs:
                     self._set_logs_complete()
                     self._call_callbacks(LogEvent.LOG_COMPLETE)
 
